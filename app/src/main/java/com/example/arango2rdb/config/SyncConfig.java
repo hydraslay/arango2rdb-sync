@@ -5,15 +5,22 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class SyncConfig {
+    private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
+    private static final Pattern FIELD_PATH = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+");
+
     public ArangoConfig arango;
     public RdbConfig rdb;
     public List<CollectionMapping> collections = Collections.emptyList();
+    public List<MergeMapping> merges = Collections.emptyList();
 
     public void validate() {
         if (arango == null) {
@@ -48,6 +55,17 @@ public class SyncConfig {
                     throw new IllegalArgumentException(
                             "Table " + mapping.table + " cannot depend on itself");
                 }
+            }
+        }
+
+        if (merges == null) {
+            merges = Collections.emptyList();
+        }
+        Set<String> mergeNames = new HashSet<>();
+        for (MergeMapping merge : merges) {
+            merge.validate(null, byTable.keySet());
+            if (!mergeNames.add(merge.name)) {
+                throw new IllegalArgumentException("Duplicate merge mapping name " + merge.name);
             }
         }
     }
@@ -135,4 +153,137 @@ public class SyncConfig {
             return table.toLowerCase(Locale.ROOT);
         }
     }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class MergeMapping {
+        public String name;
+        public String targetTable;
+        public String mainCollection;
+        public String keyColumn;
+        public String keyField;
+        public Map<String, String> fieldMappings = Collections.emptyMap();
+        public List<MergeJoin> joins = Collections.emptyList();
+
+        void validate(Set<String> knownCollections, Set<String> knownTables) {
+            if (name == null || name.isBlank()) {
+                throw new IllegalArgumentException("Merge mapping name is required");
+            }
+            if (!IDENTIFIER.matcher(name).matches()) {
+                throw new IllegalArgumentException("Merge mapping name contains invalid characters: " + name);
+            }
+            if (targetTable == null || targetTable.isBlank()) {
+                throw new IllegalArgumentException("Merge mapping target table is required for " + name);
+            }
+            if (mainCollection == null || mainCollection.isBlank()) {
+                throw new IllegalArgumentException("Merge mapping main collection is required for " + name);
+            }
+            if (knownCollections != null && !knownCollections.contains(mainCollection)) {
+                throw new IllegalArgumentException(
+                        "Merge mapping " + name + " references unknown collection " + mainCollection);
+            }
+            if (keyColumn == null || keyColumn.isBlank()) {
+                throw new IllegalArgumentException("Merge mapping key column is required for " + name);
+            }
+            if (keyField == null || keyField.isBlank()) {
+                throw new IllegalArgumentException("Merge mapping key field is required for " + name);
+            }
+            if (!FIELD_PATH.matcher(keyField).matches()) {
+                throw new IllegalArgumentException(
+                        "Merge mapping key field must reference an alias property (alias.field): " + keyField);
+            }
+            if (fieldMappings == null || fieldMappings.isEmpty()) {
+                throw new IllegalArgumentException("Merge mapping " + name + " must define field mappings");
+            }
+
+            Map<String, String> cleanedFields = new HashMap<>();
+            for (Map.Entry<String, String> entry : fieldMappings.entrySet()) {
+                String source = entry.getKey();
+                String target = entry.getValue();
+                if (source == null || source.isBlank()) {
+                    throw new IllegalArgumentException(
+                            "Merge mapping " + name + " contains a blank field source");
+                }
+                if (!FIELD_PATH.matcher(source).matches()) {
+                    throw new IllegalArgumentException(
+                            "Merge mapping " + name + " field source must be alias.property: " + source);
+                }
+                if (target == null || target.isBlank()) {
+                    throw new IllegalArgumentException(
+                            "Merge mapping " + name + " contains a blank field target for " + source);
+                }
+                cleanedFields.put(source, target);
+            }
+            fieldMappings = Map.copyOf(cleanedFields);
+            if (!fieldMappings.containsKey(keyField)) {
+                throw new IllegalArgumentException(
+                        "Merge mapping " + name + " must map keyField " + keyField + " to a target column");
+            }
+
+            if (joins == null) {
+                joins = Collections.emptyList();
+            }
+            Map<String, MergeJoin> aliases = new HashMap<>();
+            List<MergeJoin> cleanedJoins = new ArrayList<>();
+            for (MergeJoin join : joins) {
+                join.validate(name, aliases.keySet(), knownCollections, knownTables);
+                aliases.put(join.alias, join);
+                cleanedJoins.add(join);
+            }
+            joins = List.copyOf(cleanedJoins);
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class MergeJoin {
+        public String alias;
+        public String collection;
+        public String localField;
+        public String foreignField;
+        public boolean required = true;
+
+        void validate(String mergeName,
+                       Set<String> existingAliases,
+                       Set<String> knownCollections,
+                       Set<String> knownTables) {
+            if (alias == null || alias.isBlank()) {
+                throw new IllegalArgumentException("Join alias is required for merge " + mergeName);
+            }
+            if (!IDENTIFIER.matcher(alias).matches()) {
+                throw new IllegalArgumentException(
+                        "Join alias contains invalid characters in merge " + mergeName + ": " + alias);
+            }
+            if ("main".equalsIgnoreCase(alias)) {
+                throw new IllegalArgumentException("Join alias cannot be 'main' in merge " + mergeName);
+            }
+            if (existingAliases.contains(alias)) {
+                throw new IllegalArgumentException(
+                        "Duplicate join alias '" + alias + "' in merge " + mergeName);
+            }
+            if (collection == null || collection.isBlank()) {
+                throw new IllegalArgumentException(
+                        "Join collection is required for alias '" + alias + "' in merge " + mergeName);
+            }
+            if (knownCollections != null && !knownCollections.contains(collection)) {
+                throw new IllegalArgumentException(
+                        "Merge " + mergeName + " references unknown collection " + collection + " for alias " + alias);
+            }
+            if (localField == null || localField.isBlank()) {
+                throw new IllegalArgumentException(
+                        "Join localField is required for alias '" + alias + "' in merge " + mergeName);
+            }
+            if (!FIELD_PATH.matcher(localField).matches()) {
+                throw new IllegalArgumentException(
+                        "Join localField must be alias.property for alias '" + alias + "' in merge " + mergeName);
+            }
+            if (foreignField == null || foreignField.isBlank()) {
+                throw new IllegalArgumentException(
+                        "Join foreignField is required for alias '" + alias + "' in merge " + mergeName);
+            }
+            if (!IDENTIFIER.matcher(foreignField.replace(".", "_")).matches()) {
+                throw new IllegalArgumentException(
+                        "Join foreignField contains invalid characters for alias '" + alias + "' in merge " + mergeName);
+            }
+        }
+    }
 }
+

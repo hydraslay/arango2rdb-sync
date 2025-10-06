@@ -4,7 +4,9 @@ const db = require('@arangodb').db;
 const databaseName = 'project_graph';
 
 if (!db._databases().includes(databaseName)) {
-  db._createDatabase(databaseName);
+  print('creating new database: ' + databaseName);
+  db._createDatabase(databaseName, { users: [{ username: "root", passwd: "arango2rdb" }] });
+  print('done');
 }
 
 db._useDatabase(databaseName);
@@ -83,6 +85,21 @@ projects.save({
   teamId: 'team-design',
   startDate: '2024-03-01',
   endDate: '2024-09-30'
+});
+
+
+const projectHealth = ensureCollection('project_health');
+projectHealth.save({
+  _key: 'health-project-analytics',
+  projectId: 'project-analytics',
+  status: 'AT_RISK',
+  updatedAt: '2024-04-10T10:00:00Z'
+});
+projectHealth.save({
+  _key: 'health-project-mobile',
+  projectId: 'project-mobile',
+  status: 'ON_TRACK',
+  updatedAt: '2024-03-25T15:30:00Z'
 });
 
 const tasks = ensureCollection('tasks');

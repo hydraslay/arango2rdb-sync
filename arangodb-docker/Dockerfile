@@ -1,7 +1,4 @@
-﻿FROM arangodb:3.11.7
-
-ENV ARANGO_ROOT_PASSWORD=openSesame
-ENV ARANGO_NO_AUTH=0
+﻿FROM arangodb:3.11
 
 COPY initdb.d/ /docker-entrypoint-initdb.d/
 

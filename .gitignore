@@ -1,13 +1,1 @@
-app/target/arango2rdb-sync-1.0.0-SNAPSHOT-shaded.jar
-app/target/arango2rdb-sync-1.0.0-SNAPSHOT.jar
-app/target/original-arango2rdb-sync-1.0.0-SNAPSHOT.jar
-app/target/classes/com/example/arango2rdb/App.class
-app/target/classes/com/example/arango2rdb/MappingLoader.class
-app/target/classes/com/example/arango2rdb/SyncService.class
-app/target/classes/com/example/arango2rdb/config/SyncConfig.class
-app/target/classes/com/example/arango2rdb/config/SyncConfig$ArangoConfig.class
-app/target/classes/com/example/arango2rdb/config/SyncConfig$CollectionMapping.class
-app/target/classes/com/example/arango2rdb/config/SyncConfig$RdbConfig.class
-app/target/maven-archiver/pom.properties
-app/target/maven-status/maven-compiler-plugin/compile/default-compile/createdFiles.lst
-app/target/maven-status/maven-compiler-plugin/compile/default-compile/inputFiles.lst
+app/target/*

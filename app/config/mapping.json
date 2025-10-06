@@ -1,9 +1,9 @@
-﻿{
+{
   "arango": {
     "host": "localhost",
     "port": 8529,
     "user": "root",
-    "password": "openSesame",
+    "password": "arango2rdb",
     "database": "project_graph"
   },
   "rdb": {
@@ -97,5 +97,39 @@
       },
       "dependsOn": ["projects"]
     }
+  ],
+  "merges": [
+    {
+      "name": "project_overview",
+      "targetTable": "project_overview",
+      "mainCollection": "projects",
+      "keyColumn": "project_id",
+      "keyField": "main._key",
+      "fieldMappings": {
+        "main._key": "project_id",
+        "main.name": "project_name",
+        "team.name": "team_name",
+        "health.status": "health_status",
+        "health.updatedAt": "health_updated_at"
+      },
+      "joins": [
+        {
+          "alias": "team",
+          "collection": "teams",
+          "localField": "main.teamId",
+          "foreignField": "_key",
+          "required": true
+        },
+        {
+          "alias": "health",
+          "collection": "project_health",
+          "localField": "main._key",
+          "foreignField": "projectId",
+          "required": false
+        }
+      ]
+    }
   ]
 }
+
+

@@ -4,7 +4,7 @@
     ports:
       - "8529:8529"
     environment:
-      ARANGO_ROOT_PASSWORD: openSesame
+      ARANGO_ROOT_PASSWORD: arango2rdb
   postgres:
     build: ./postgres-docker
     ports:

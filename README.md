@@ -20,6 +20,11 @@ mvn -DskipTests package
 
 The shaded JAR will be produced at `app/target/arango2rdb-sync-1.0.0-SNAPSHOT-shaded.jar`.
 
+## or directly Run with source
+```
+mvn compile exec:java -Dexec.mainClass="com.example.arango2rdb.App"
+```
+
 ### Commands
 
 ```bash
@@ -55,7 +60,7 @@ docker compose up --build
 ### ArangoDB image
 
 - User: `root`
-- Password: `openSesame`
+- Password: `arango2rdb`
 - Database: `project_graph`
 - Sample collections: `teams`, `members`, `projects`, `tasks`, `task_assignments`, `milestones`
 

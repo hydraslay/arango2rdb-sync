@@ -4,6 +4,8 @@ import com.arangodb.ArangoCursor;
 import com.arangodb.ArangoDB;
 import com.arangodb.ArangoDatabase;
 import com.arangodb.entity.BaseDocument;
+import com.arangodb.entity.CollectionEntity;
+import com.arangodb.ArangoDBException;
 import com.example.arango2rdb.config.SyncConfig;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -37,6 +39,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class SyncService implements AutoCloseable {
     private final SyncConfig config;
@@ -47,6 +50,7 @@ public class SyncService implements AutoCloseable {
     private final Map<String, Map<String, Integer>> columnTypeCache = new HashMap<>();
     private final ObjectMapper jsonMapper = new ObjectMapper();
     private final List<SyncConfig.CollectionMapping> orderedMappings;
+    private final List<SyncConfig.MergeMapping> mergeMappings;
 
     public SyncService(SyncConfig config) throws SQLException {
         this.config = Objects.requireNonNull(config, "config");
@@ -59,18 +63,31 @@ public class SyncService implements AutoCloseable {
             builder.useSsl(true);
         }
         this.arangoDB = builder.build();
-        this.arangoDatabase = arangoDB.db(arango.database);
+
+        ArangoDatabase database;
+        try {
+            ensureDatabase(arango.database);
+            database = arangoDB.db(arango.database);
+        } catch (ArangoDBException ex) {
+            throw new SQLException("Failed to initialise ArangoDB database " + arango.database, ex);
+        }
+        this.arangoDatabase = database;
 
         SyncConfig.RdbConfig rdb = config.rdb;
         this.connection = DriverManager.getConnection(rdb.jdbcUrl, rdb.user, rdb.password);
         this.connection.setAutoCommit(false);
         this.databaseMetaData = connection.getMetaData();
         this.orderedMappings = orderMappings(config.collections);
+        this.mergeMappings = config.merges != null ? List.copyOf(config.merges) : List.of();
+        ensureCollections(config);
     }
 
     public void run() throws SQLException {
         for (SyncConfig.CollectionMapping mapping : orderedMappings) {
             syncCollection(mapping);
+        }
+        for (SyncConfig.MergeMapping merge : mergeMappings) {
+            syncMerge(merge);
         }
     }
 
@@ -125,10 +142,6 @@ public class SyncService implements AutoCloseable {
         return ordered;
     }
 
-    private String normalizeTable(String table) {
-        return table.toLowerCase(Locale.ROOT);
-    }
-
     private void syncCollection(SyncConfig.CollectionMapping mapping) throws SQLException {
         System.out.printf(Locale.US, "Syncing collection %s -> table %s%n", mapping.collection, mapping.table);
         Map<String, Object> bindVars = Map.of("@collection", mapping.collection);
@@ -145,6 +158,61 @@ public class SyncService implements AutoCloseable {
         } catch (Exception ex) {
             connection.rollback();
             throw new SQLException("Failed to sync collection " + mapping.collection, ex);
+        }
+    }
+
+    private void syncMerge(SyncConfig.MergeMapping merge) throws SQLException {
+        System.out.printf(Locale.US, "Syncing merge %s -> table %s%n", merge.name, merge.targetTable);
+        Map<String, Object> bindVars = Map.of("@collection", merge.mainCollection);
+        try (ArangoCursor<BaseDocument> cursor = arangoDatabase.query(
+                "FOR doc IN @@collection RETURN doc",
+                bindVars,
+                null,
+                BaseDocument.class)) {
+            while (cursor.hasNext()) {
+                BaseDocument mainDoc = cursor.next();
+                Map<String, BaseDocument> context = new HashMap<>();
+                context.put("main", mainDoc);
+
+                boolean skip = false;
+                for (SyncConfig.MergeJoin join : merge.joins) {
+                    Object localValue = resolveAliasPath(context, join.localField);
+                    BaseDocument joinDoc = null;
+                    if (localValue != null) {
+                        joinDoc = fetchJoinDocument(join, localValue);
+                    }
+                    if (joinDoc == null) {
+                        if (join.required) {
+                            skip = true;
+                            break;
+                        }
+                        context.remove(join.alias);
+                    } else {
+                        context.put(join.alias, joinDoc);
+                    }
+                }
+                if (skip) {
+                    continue;
+                }
+
+                Object keyRaw = resolveAliasPath(context, merge.keyField);
+                if (keyRaw == null) {
+                    throw new SQLException("Merge '" + merge.name + "' missing key field " + merge.keyField
+                            + " for main document " + mainDoc.getKey());
+                }
+
+                Map<String, Object> columnValues = new LinkedHashMap<>();
+                for (Map.Entry<String, String> entry : merge.fieldMappings.entrySet()) {
+                    Object value = resolveAliasPath(context, entry.getKey());
+                    columnValues.put(entry.getValue(), value);
+                }
+
+                upsertRow(merge.targetTable, merge.keyColumn, keyRaw, columnValues);
+            }
+            connection.commit();
+        } catch (Exception ex) {
+            connection.rollback();
+            throw new SQLException("Failed to sync merge " + merge.name, ex);
         }
     }
 
@@ -292,6 +360,171 @@ public class SyncService implements AutoCloseable {
             }
         }
         return current;
+    }
+
+    private Object resolveAliasPath(Map<String, BaseDocument> context, String path) {
+        if (path == null || path.isBlank()) {
+            return null;
+        }
+        String[] parts = path.split("\\.", 2);
+        String alias = parts[0];
+        BaseDocument document = context.get(alias);
+        if (document == null) {
+            return null;
+        }
+        if (parts.length == 1) {
+            return document;
+        }
+        return resolveValue(document, parts[1]);
+    }
+
+    private BaseDocument fetchJoinDocument(SyncConfig.MergeJoin join, Object localValue) throws SQLException {
+        Map<String, Object> bindVars = Map.of("value", localValue);
+        String query = "FOR doc IN " + join.collection + " FILTER " + buildFieldAccess("doc", join.foreignField)
+                + " == @value LIMIT 1 RETURN doc";
+        try (ArangoCursor<BaseDocument> cursor = arangoDatabase.query(query, bindVars, null, BaseDocument.class)) {
+            if (cursor.hasNext()) {
+                return cursor.next();
+            }
+        } catch (Exception ex) {
+            throw new SQLException("Failed to load join '" + join.alias + "' from collection " + join.collection, ex);
+        }
+        return null;
+    }
+
+    private String buildFieldAccess(String root, String fieldPath) {
+        if (fieldPath.startsWith(".")) {
+            throw new IllegalArgumentException("Invalid foreign field path: " + fieldPath);
+        }
+        return root + "." + fieldPath;
+    }
+
+    private void ensureDatabase(String databaseName) throws ArangoDBException {
+        if (!arangoDB.getDatabases().contains(databaseName)) {
+            arangoDB.createDatabase(databaseName);
+        }
+    }
+
+    private void ensureCollections(SyncConfig cfg) throws SQLException {
+        try {
+            Set<String> required = new HashSet<>();
+            for (SyncConfig.CollectionMapping mapping : cfg.collections) {
+                if (mapping.collection != null && !mapping.collection.isBlank()) {
+                    required.add(mapping.collection);
+                }
+            }
+            for (SyncConfig.MergeMapping merge : mergeMappings) {
+                if (merge.mainCollection != null && !merge.mainCollection.isBlank()) {
+                    required.add(merge.mainCollection);
+                }
+                for (SyncConfig.MergeJoin join : merge.joins) {
+                    if (join.collection != null && !join.collection.isBlank()) {
+                        required.add(join.collection);
+                    }
+                }
+            }
+            Set<String> existing = arangoDatabase.getCollections().stream()
+                    .map(CollectionEntity::getName)
+                    .collect(Collectors.toSet());
+            for (String collection : required) {
+                if (!existing.contains(collection)) {
+                    arangoDatabase.createCollection(collection);
+                    existing.add(collection);
+                }
+            }
+        } catch (ArangoDBException ex) {
+            throw new SQLException("Failed to ensure ArangoDB collections", ex);
+        }
+    }
+
+    private void upsertRow(String table, String keyColumn, Object rawKeyValue, Map<String, Object> columnValues) throws SQLException {
+        if (rawKeyValue == null) {
+            throw new SQLException("Null key encountered for table " + table);
+        }
+        Object sqlKeyValue = toSqlValue(table, keyColumn, rawKeyValue);
+
+        Map<String, Object> converted = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : columnValues.entrySet()) {
+            converted.put(entry.getKey(), toSqlValue(table, entry.getKey(), entry.getValue()));
+        }
+
+        List<String> updateColumns = new ArrayList<>();
+        List<Object> updateValues = new ArrayList<>();
+        for (Map.Entry<String, Object> entry : converted.entrySet()) {
+            if (entry.getKey().equals(keyColumn)) {
+                continue;
+            }
+            updateColumns.add(entry.getKey());
+            updateValues.add(entry.getValue());
+        }
+
+        if (updateColumns.isEmpty()) {
+            if (!exists(table, keyColumn, rawKeyValue)) {
+                insertRow(table, keyColumn, sqlKeyValue, converted);
+            }
+            return;
+        }
+
+        StringBuilder sql = new StringBuilder();
+        sql.append("UPDATE ").append(table).append(" SET ");
+        for (int i = 0; i < updateColumns.size(); i++) {
+            if (i > 0) {
+                sql.append(", ");
+            }
+            sql.append(updateColumns.get(i)).append(" = ?");
+        }
+        sql.append(" WHERE ").append(keyColumn).append(" = ?");
+
+        try (PreparedStatement update = connection.prepareStatement(sql.toString())) {
+            int index = 1;
+            for (Object value : updateValues) {
+                update.setObject(index++, value);
+            }
+            update.setObject(index, sqlKeyValue);
+            int affected = update.executeUpdate();
+            if (affected == 0) {
+                insertRow(table, keyColumn, sqlKeyValue, converted);
+            }
+        }
+    }
+
+    private void insertRow(String table, String keyColumn, Object sqlKeyValue, Map<String, Object> converted) throws SQLException {
+        LinkedHashMap<String, Object> finalColumns = new LinkedHashMap<>();
+        if (converted.containsKey(keyColumn)) {
+            finalColumns.put(keyColumn, converted.get(keyColumn));
+        } else {
+            finalColumns.put(keyColumn, sqlKeyValue);
+        }
+        for (Map.Entry<String, Object> entry : converted.entrySet()) {
+            if (!entry.getKey().equals(keyColumn)) {
+                finalColumns.put(entry.getKey(), entry.getValue());
+            }
+        }
+
+        StringBuilder sql = new StringBuilder();
+        sql.append("INSERT INTO ").append(table).append(" (");
+        StringBuilder placeholders = new StringBuilder();
+        List<Object> values = new ArrayList<>(finalColumns.size());
+        int index = 0;
+        for (Map.Entry<String, Object> entry : finalColumns.entrySet()) {
+            if (index > 0) {
+                sql.append(", ");
+                placeholders.append(", ");
+            }
+            sql.append(entry.getKey());
+            placeholders.append("?");
+            Object value = entry.getKey().equals(keyColumn) ? sqlKeyValue : entry.getValue();
+            values.add(value);
+            index++;
+        }
+        sql.append(") VALUES (").append(placeholders).append(")");
+
+        try (PreparedStatement insert = connection.prepareStatement(sql.toString())) {
+            for (int i = 0; i < values.size(); i++) {
+                insert.setObject(i + 1, values.get(i));
+            }
+            insert.executeUpdate();
+        }
     }
 
     private Object toSqlValue(String table, String column, Object rawValue) throws SQLException {
@@ -510,6 +743,10 @@ public class SyncService implements AutoCloseable {
             }
         }
         throw new SQLException("Unsupported value type for TIME column: " + value.getClass().getName());
+    }
+
+    private String normalizeTable(String table) {
+        return table.toLowerCase(Locale.ROOT);
     }
 
     @Override

@@ -47,3 +47,12 @@ CREATE TABLE IF NOT EXISTS milestones (
     target_date DATE,
     status TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS project_overview (
+    project_id VARCHAR(64) PRIMARY KEY,
+    project_name TEXT NOT NULL,
+    team_name TEXT NOT NULL,
+    health_status TEXT,
+    health_updated_at TIMESTAMP
+);
+
