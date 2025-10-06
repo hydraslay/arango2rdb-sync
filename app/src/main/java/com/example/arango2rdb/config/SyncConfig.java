@@ -2,8 +2,11 @@ package com.example.arango2rdb.config;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -24,8 +27,28 @@ public class SyncConfig {
         if (collections == null || collections.isEmpty()) {
             throw new IllegalArgumentException("At least one collection mapping is required");
         }
+
+        Map<String, CollectionMapping> byTable = new HashMap<>();
         for (CollectionMapping mapping : collections) {
             mapping.validate();
+            String tableKey = mapping.tableKey();
+            if (byTable.put(tableKey, mapping) != null) {
+                throw new IllegalArgumentException("Duplicate mapping for table " + mapping.table);
+            }
+        }
+
+        for (CollectionMapping mapping : collections) {
+            for (String dependency : mapping.dependsOn) {
+                String depKey = dependency.toLowerCase(Locale.ROOT);
+                if (!byTable.containsKey(depKey)) {
+                    throw new IllegalArgumentException(
+                            "Unknown dependency '" + dependency + "' declared for table " + mapping.table);
+                }
+                if (depKey.equals(mapping.tableKey())) {
+                    throw new IllegalArgumentException(
+                            "Table " + mapping.table + " cannot depend on itself");
+                }
+            }
         }
     }
 
@@ -71,6 +94,7 @@ public class SyncConfig {
         public String keyField = "_key";
         public String keyColumn = "id";
         public Map<String, String> fieldMappings = Collections.emptyMap();
+        public List<String> dependsOn = Collections.emptyList();
 
         void validate() {
             if (collection == null || collection.isBlank()) {
@@ -86,8 +110,29 @@ public class SyncConfig {
                 throw new IllegalArgumentException("Mapping key column is required");
             }
             if (fieldMappings == null) {
-                throw new IllegalArgumentException("Field mappings must be provided for collection " + collection);
+                throw new IllegalArgumentException(
+                        "Field mappings must be provided for collection " + collection);
             }
+            if (dependsOn == null) {
+                dependsOn = Collections.emptyList();
+            } else {
+                List<String> cleaned = new ArrayList<>();
+                for (String dependency : dependsOn) {
+                    if (dependency == null || dependency.isBlank()) {
+                        throw new IllegalArgumentException(
+                                "Dependencies for table " + table + " must not contain blank entries");
+                    }
+                    String trimmed = dependency.trim();
+                    if (!cleaned.contains(trimmed)) {
+                        cleaned.add(trimmed);
+                    }
+                }
+                dependsOn = List.copyOf(cleaned);
+            }
+        }
+
+        String tableKey() {
+            return table.toLowerCase(Locale.ROOT);
         }
     }
 }

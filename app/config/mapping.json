@@ -13,21 +13,6 @@
   },
   "collections": [
     {
-      "collection": "projects",
-      "table": "projects",
-      "keyField": "_key",
-      "keyColumn": "project_id",
-      "fieldMappings": {
-        "_key": "project_id",
-        "name": "name",
-        "description": "description",
-        "status": "status",
-        "teamId": "team_id",
-        "startDate": "start_date",
-        "endDate": "end_date"
-      }
-    },
-    {
       "collection": "teams",
       "table": "teams",
       "keyField": "_key",
@@ -50,7 +35,24 @@
         "email": "email",
         "role": "role",
         "teamId": "team_id"
-      }
+      },
+      "dependsOn": ["teams"]
+    },
+    {
+      "collection": "projects",
+      "table": "projects",
+      "keyField": "_key",
+      "keyColumn": "project_id",
+      "fieldMappings": {
+        "_key": "project_id",
+        "name": "name",
+        "description": "description",
+        "status": "status",
+        "teamId": "team_id",
+        "startDate": "start_date",
+        "endDate": "end_date"
+      },
+      "dependsOn": ["teams"]
     },
     {
       "collection": "tasks",
@@ -64,7 +66,8 @@
         "status": "status",
         "dueDate": "due_date",
         "assignedTeamId": "assigned_team_id"
-      }
+      },
+      "dependsOn": ["projects", "teams"]
     },
     {
       "collection": "task_assignments",
@@ -77,7 +80,8 @@
         "memberId": "member_id",
         "hoursPlanned": "hours_planned",
         "hoursActual": "hours_actual"
-      }
+      },
+      "dependsOn": ["tasks", "members"]
     },
     {
       "collection": "milestones",
@@ -90,7 +94,8 @@
         "name": "name",
         "targetDate": "target_date",
         "status": "status"
-      }
+      },
+      "dependsOn": ["projects"]
     }
   ]
 }
