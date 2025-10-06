@@ -23,8 +23,9 @@
         <div class="stack">
             <div th:if="${arangoCollections.isEmpty()}" class="empty">No collections found.</div>
             <div th:unless="${arangoCollections.isEmpty()}">
-                <div th:each="collection : ${arangoCollections}" th:if="${collection != null}"
-                    th:replace="~{fragments/arango-collection :: collectionFragment(col=${collection})}"></div>
+                <div th:each="collection : ${arangoCollections}">
+                    <div th:replace="~{fragments/arango-collection :: collectionFragment(${collection})}"></div>
+                </div>
             </div>
         </div>
     </section>
@@ -35,10 +36,12 @@
             <article class="mapping-card" th:if="${mappings.isEmpty() && merges.isEmpty()}">
                 <div class="empty">No mappings defined in mapping.json.</div>
             </article>
-            <div th:each="mapping : ${mappings}"
-                 th:replace="~{fragments/mapping :: mapping(mapping=${mapping})}"></div>
-            <div th:each="merge : ${merges}"
-                 th:replace="~{fragments/merge :: merge(merge=${merge})}"></div>
+            <div th:each="mapping : ${mappings}">
+                <div th:replace="~{fragments/mapping :: mapping(${mapping})}"></div>
+            </div>
+            <div th:each="merge : ${merges}">
+                <div th:replace="~{fragments/merge :: merge(${merge})}"></div>
+            </div>
         </div>
     </section>
 
@@ -46,8 +49,9 @@
         <h2>Relational Tables</h2>
         <div class="stack">
             <div th:if="${rdbTables.isEmpty()}" class="empty">No tables found.</div>
-            <div th:each="table : ${rdbTables}"
-                 th:replace="~{fragments/rdb-table :: table(table=${table})}"></div>
+            <div th:each="table : ${rdbTables}">
+                <div th:replace="~{fragments/rdb-table :: table(${table})}"></div>
+            </div>
         </div>
     </section>
 </main>
