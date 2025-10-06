@@ -31,16 +31,13 @@
     </section>
 
     <section class="panel panel-center">
-        <h2>Mapping</h2>
+        <h2>Merges</h2>
         <div class="stack mappings">
-            <article class="mapping-card" th:if="${mappings.isEmpty() && merges.isEmpty()}">
-                <div class="empty">No mappings defined in mapping.json.</div>
+            <article class="mapping-card" th:if="${merges.isEmpty()}">
+                <div class="empty">No merges defined in mapping.json.</div>
             </article>
-            <div th:each="mapping : ${mappings}">
-                <div th:replace="~{fragments/mapping :: mapping(${mapping})}"></div>
-            </div>
             <div th:each="merge : ${merges}">
-                <div th:replace="~{fragments/merge :: merge(${merge})}"></div>
+                <div th:replace="~{fragments/merge :: merge(merge=${merge})}"></div>
             </div>
         </div>
     </section>

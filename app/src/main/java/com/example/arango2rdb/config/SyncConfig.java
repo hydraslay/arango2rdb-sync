@@ -19,7 +19,6 @@ public class SyncConfig {
 
     public ArangoConfig arango;
     public RdbConfig rdb;
-    public List<CollectionMapping> collections = Collections.emptyList();
     public List<MergeMapping> merges = Collections.emptyList();
 
     public void validate() {
@@ -31,43 +30,26 @@ public class SyncConfig {
             throw new IllegalArgumentException("Missing relational database configuration");
         }
         rdb.validate();
-        if (collections == null || collections.isEmpty()) {
-            throw new IllegalArgumentException("At least one collection mapping is required");
+
+        if (merges == null || merges.isEmpty()) {
+            throw new IllegalArgumentException("At least one merge mapping is required");
         }
 
-        Map<String, CollectionMapping> byTable = new HashMap<>();
-        for (CollectionMapping mapping : collections) {
-            mapping.validate();
-            String tableKey = mapping.tableKey();
-            if (byTable.put(tableKey, mapping) != null) {
-                throw new IllegalArgumentException("Duplicate mapping for table " + mapping.table);
-            }
-        }
-
-        for (CollectionMapping mapping : collections) {
-            for (String dependency : mapping.dependsOn) {
-                String depKey = dependency.toLowerCase(Locale.ROOT);
-                if (!byTable.containsKey(depKey)) {
-                    throw new IllegalArgumentException(
-                            "Unknown dependency '" + dependency + "' declared for table " + mapping.table);
-                }
-                if (depKey.equals(mapping.tableKey())) {
-                    throw new IllegalArgumentException(
-                            "Table " + mapping.table + " cannot depend on itself");
-                }
-            }
-        }
-
-        if (merges == null) {
-            merges = Collections.emptyList();
-        }
         Set<String> mergeNames = new HashSet<>();
+        Set<String> targetTables = new HashSet<>();
+        List<MergeMapping> cleaned = new ArrayList<>(merges.size());
         for (MergeMapping merge : merges) {
-            merge.validate(null, byTable.keySet());
+            merge.validate();
             if (!mergeNames.add(merge.name)) {
                 throw new IllegalArgumentException("Duplicate merge mapping name " + merge.name);
             }
+            String tableKey = merge.targetTable.toLowerCase(Locale.ROOT);
+            if (!targetTables.add(tableKey)) {
+                throw new IllegalArgumentException("Duplicate merge target table " + merge.targetTable);
+            }
+            cleaned.add(merge);
         }
+        merges = List.copyOf(cleaned);
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -106,55 +88,6 @@ public class SyncConfig {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class CollectionMapping {
-        public String collection;
-        public String table;
-        public String keyField = "_key";
-        public String keyColumn = "id";
-        public Map<String, String> fieldMappings = Collections.emptyMap();
-        public List<String> dependsOn = Collections.emptyList();
-
-        void validate() {
-            if (collection == null || collection.isBlank()) {
-                throw new IllegalArgumentException("Mapping collection name is required");
-            }
-            if (table == null || table.isBlank()) {
-                throw new IllegalArgumentException("Mapping table name is required");
-            }
-            if (keyField == null || keyField.isBlank()) {
-                throw new IllegalArgumentException("Mapping key field is required");
-            }
-            if (keyColumn == null || keyColumn.isBlank()) {
-                throw new IllegalArgumentException("Mapping key column is required");
-            }
-            if (fieldMappings == null) {
-                throw new IllegalArgumentException(
-                        "Field mappings must be provided for collection " + collection);
-            }
-            if (dependsOn == null) {
-                dependsOn = Collections.emptyList();
-            } else {
-                List<String> cleaned = new ArrayList<>();
-                for (String dependency : dependsOn) {
-                    if (dependency == null || dependency.isBlank()) {
-                        throw new IllegalArgumentException(
-                                "Dependencies for table " + table + " must not contain blank entries");
-                    }
-                    String trimmed = dependency.trim();
-                    if (!cleaned.contains(trimmed)) {
-                        cleaned.add(trimmed);
-                    }
-                }
-                dependsOn = List.copyOf(cleaned);
-            }
-        }
-
-        String tableKey() {
-            return table.toLowerCase(Locale.ROOT);
-        }
-    }
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class MergeMapping {
         public String name;
         public String targetTable;
@@ -164,7 +97,7 @@ public class SyncConfig {
         public Map<String, String> fieldMappings = Collections.emptyMap();
         public List<MergeJoin> joins = Collections.emptyList();
 
-        void validate(Set<String> knownCollections, Set<String> knownTables) {
+        void validate() {
             if (name == null || name.isBlank()) {
                 throw new IllegalArgumentException("Merge mapping name is required");
             }
@@ -176,10 +109,6 @@ public class SyncConfig {
             }
             if (mainCollection == null || mainCollection.isBlank()) {
                 throw new IllegalArgumentException("Merge mapping main collection is required for " + name);
-            }
-            if (knownCollections != null && !knownCollections.contains(mainCollection)) {
-                throw new IllegalArgumentException(
-                        "Merge mapping " + name + " references unknown collection " + mainCollection);
             }
             if (keyColumn == null || keyColumn.isBlank()) {
                 throw new IllegalArgumentException("Merge mapping key column is required for " + name);
@@ -225,7 +154,7 @@ public class SyncConfig {
             Map<String, MergeJoin> aliases = new HashMap<>();
             List<MergeJoin> cleanedJoins = new ArrayList<>();
             for (MergeJoin join : joins) {
-                join.validate(name, aliases.keySet(), knownCollections, knownTables);
+                join.validate(name, aliases.keySet());
                 aliases.put(join.alias, join);
                 cleanedJoins.add(join);
             }
@@ -241,10 +170,7 @@ public class SyncConfig {
         public String foreignField;
         public boolean required = true;
 
-        void validate(String mergeName,
-                       Set<String> existingAliases,
-                       Set<String> knownCollections,
-                       Set<String> knownTables) {
+        void validate(String mergeName, Set<String> existingAliases) {
             if (alias == null || alias.isBlank()) {
                 throw new IllegalArgumentException("Join alias is required for merge " + mergeName);
             }
@@ -262,10 +188,6 @@ public class SyncConfig {
             if (collection == null || collection.isBlank()) {
                 throw new IllegalArgumentException(
                         "Join collection is required for alias '" + alias + "' in merge " + mergeName);
-            }
-            if (knownCollections != null && !knownCollections.contains(collection)) {
-                throw new IllegalArgumentException(
-                        "Merge " + mergeName + " references unknown collection " + collection + " for alias " + alias);
             }
             if (localField == null || localField.isBlank()) {
                 throw new IllegalArgumentException(
@@ -286,4 +208,3 @@ public class SyncConfig {
         }
     }
 }
-

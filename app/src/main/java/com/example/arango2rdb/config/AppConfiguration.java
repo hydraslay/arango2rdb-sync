@@ -90,9 +90,6 @@ public class AppConfiguration {
 
     private void ensureCollections(ArangoDatabase database, SyncConfig config) {
         Set<String> required = new HashSet<>();
-        for (SyncConfig.CollectionMapping mapping : config.collections) {
-            required.add(mapping.collection);
-        }
         if (config.merges != null) {
             for (SyncConfig.MergeMapping merge : config.merges) {
                 required.add(merge.mainCollection);

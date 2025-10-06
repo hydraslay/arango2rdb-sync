@@ -26,7 +26,6 @@ public class SchemaController {
         model.addAttribute("filter", filter);
         model.addAttribute("arangoCollections", service.loadArangoCollections(filter));
         model.addAttribute("rdbTables", service.loadTables(filter));
-        model.addAttribute("mappings", service.getCollectionMappings());
         model.addAttribute("merges", service.getMergeMappings());
         return "schema-view";
     }

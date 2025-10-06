@@ -11,94 +11,99 @@
     "user": "postgres",
     "password": "postgres"
   },
-  "collections": [
-    {
-      "collection": "teams",
-      "table": "teams",
-      "keyField": "_key",
-      "keyColumn": "team_id",
-      "fieldMappings": {
-        "_key": "team_id",
-        "name": "name",
-        "leadMemberId": "lead_member_id"
-      }
-    },
-    {
-      "collection": "members",
-      "table": "members",
-      "keyField": "_key",
-      "keyColumn": "member_id",
-      "fieldMappings": {
-        "_key": "member_id",
-        "firstName": "first_name",
-        "lastName": "last_name",
-        "email": "email",
-        "role": "role",
-        "teamId": "team_id"
-      },
-      "dependsOn": ["teams"]
-    },
-    {
-      "collection": "projects",
-      "table": "projects",
-      "keyField": "_key",
-      "keyColumn": "project_id",
-      "fieldMappings": {
-        "_key": "project_id",
-        "name": "name",
-        "description": "description",
-        "status": "status",
-        "teamId": "team_id",
-        "startDate": "start_date",
-        "endDate": "end_date"
-      },
-      "dependsOn": ["teams"]
-    },
-    {
-      "collection": "tasks",
-      "table": "tasks",
-      "keyField": "_key",
-      "keyColumn": "task_id",
-      "fieldMappings": {
-        "_key": "task_id",
-        "projectId": "project_id",
-        "name": "name",
-        "status": "status",
-        "dueDate": "due_date",
-        "assignedTeamId": "assigned_team_id"
-      },
-      "dependsOn": ["projects", "teams"]
-    },
-    {
-      "collection": "task_assignments",
-      "table": "task_assignments",
-      "keyField": "_key",
-      "keyColumn": "assignment_id",
-      "fieldMappings": {
-        "_key": "assignment_id",
-        "taskId": "task_id",
-        "memberId": "member_id",
-        "hoursPlanned": "hours_planned",
-        "hoursActual": "hours_actual"
-      },
-      "dependsOn": ["tasks", "members"]
-    },
-    {
-      "collection": "milestones",
-      "table": "milestones",
-      "keyField": "_key",
-      "keyColumn": "milestone_id",
-      "fieldMappings": {
-        "_key": "milestone_id",
-        "projectId": "project_id",
-        "name": "name",
-        "targetDate": "target_date",
-        "status": "status"
-      },
-      "dependsOn": ["projects"]
-    }
-  ],
   "merges": [
+    {
+      "name": "teams",
+      "targetTable": "teams",
+      "mainCollection": "teams",
+      "keyColumn": "team_id",
+      "keyField": "main._key",
+      "fieldMappings": {
+        "main._key": "team_id",
+        "main.name": "name",
+        "main.leadMemberId": "lead_member_id"
+      },
+      "joins": []
+    },
+    {
+      "name": "members",
+      "targetTable": "members",
+      "mainCollection": "members",
+      "keyColumn": "member_id",
+      "keyField": "main._key",
+      "fieldMappings": {
+        "main._key": "member_id",
+        "main.firstName": "first_name",
+        "main.lastName": "last_name",
+        "main.email": "email",
+        "main.role": "role",
+        "main.teamId": "team_id"
+      },
+      "joins": []
+    },
+    {
+      "name": "projects",
+      "targetTable": "projects",
+      "mainCollection": "projects",
+      "keyColumn": "project_id",
+      "keyField": "main._key",
+      "fieldMappings": {
+        "main._key": "project_id",
+        "main.name": "name",
+        "main.description": "description",
+        "main.status": "status",
+        "main.teamId": "team_id",
+        "main.startDate": "start_date",
+        "main.endDate": "end_date"
+      },
+      "joins": []
+    },
+    {
+      "name": "tasks",
+      "targetTable": "tasks",
+      "mainCollection": "tasks",
+      "keyColumn": "task_id",
+      "keyField": "main._key",
+      "fieldMappings": {
+        "main._key": "task_id",
+        "main.projectId": "project_id",
+        "main.name": "name",
+        "main.status": "status",
+        "main.dueDate": "due_date",
+        "main.assignedTeamId": "assigned_team_id"
+      },
+      "joins": []
+    },
+    {
+      "name": "task_assignments",
+      "targetTable": "task_assignments",
+      "mainCollection": "task_assignments",
+      "keyColumn": "assignment_id",
+      "keyField": "main._key",
+      "fieldMappings": {
+        "main._key": "assignment_id",
+        "main.taskId": "task_id",
+        "main.memberId": "member_id",
+        "main.hoursPlanned": "hours_planned",
+        "main.hoursActual": "hours_actual"
+      },
+      "joins": []
+    },
+    {
+      "name": "milestones",
+      "targetTable": "milestones",
+      "mainCollection": "milestones",
+      "keyColumn": "milestone_id",
+      "keyField": "main._key",
+      "fieldMappings": {
+        "main._key": "milestone_id",
+        "main.projectId": "project_id",
+        "main.name": "name",
+        "main.targetDate": "target_date",
+        "main.status": "status"
+      },
+      "joins": []
+    },
     {
       "name": "project_overview",
       "targetTable": "project_overview",
@@ -131,5 +136,3 @@
     }
   ]
 }
-
-

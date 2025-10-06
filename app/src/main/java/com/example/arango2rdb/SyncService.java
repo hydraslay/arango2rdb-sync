@@ -27,10 +27,7 @@ import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeParseException;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -49,7 +46,6 @@ public class SyncService implements AutoCloseable {
     private final DatabaseMetaData databaseMetaData;
     private final Map<String, Map<String, Integer>> columnTypeCache = new HashMap<>();
     private final ObjectMapper jsonMapper = new ObjectMapper();
-    private final List<SyncConfig.CollectionMapping> orderedMappings;
     private final List<SyncConfig.MergeMapping> mergeMappings;
 
     public SyncService(SyncConfig config) throws SQLException {
@@ -77,87 +73,13 @@ public class SyncService implements AutoCloseable {
         this.connection = DriverManager.getConnection(rdb.jdbcUrl, rdb.user, rdb.password);
         this.connection.setAutoCommit(false);
         this.databaseMetaData = connection.getMetaData();
-        this.orderedMappings = orderMappings(config.collections);
         this.mergeMappings = config.merges != null ? List.copyOf(config.merges) : List.of();
         ensureCollections(config);
     }
 
     public void run() throws SQLException {
-        for (SyncConfig.CollectionMapping mapping : orderedMappings) {
-            syncCollection(mapping);
-        }
         for (SyncConfig.MergeMapping merge : mergeMappings) {
             syncMerge(merge);
-        }
-    }
-
-    private List<SyncConfig.CollectionMapping> orderMappings(List<SyncConfig.CollectionMapping> mappings) {
-        Map<String, SyncConfig.CollectionMapping> byTable = new HashMap<>();
-        List<String> originalOrder = new ArrayList<>();
-        for (SyncConfig.CollectionMapping mapping : mappings) {
-            String tableKey = normalizeTable(mapping.table);
-            byTable.put(tableKey, mapping);
-            originalOrder.add(tableKey);
-        }
-
-        Map<String, Integer> dependencyCounts = new HashMap<>();
-        Map<String, List<String>> dependents = new HashMap<>();
-        for (SyncConfig.CollectionMapping mapping : mappings) {
-            String tableKey = normalizeTable(mapping.table);
-            Set<String> uniqueDependencies = new HashSet<>();
-            for (String dependency : mapping.dependsOn) {
-                String depKey = normalizeTable(dependency);
-                if (uniqueDependencies.add(depKey)) {
-                    dependents.computeIfAbsent(depKey, k -> new ArrayList<>()).add(tableKey);
-                }
-            }
-            dependencyCounts.put(tableKey, uniqueDependencies.size());
-        }
-
-        Deque<String> ready = new ArrayDeque<>();
-        Set<String> enqueued = new HashSet<>();
-        for (String tableKey : originalOrder) {
-            if (dependencyCounts.getOrDefault(tableKey, 0) == 0) {
-                ready.addLast(tableKey);
-                enqueued.add(tableKey);
-            }
-        }
-
-        List<SyncConfig.CollectionMapping> ordered = new ArrayList<>(mappings.size());
-        while (!ready.isEmpty()) {
-            String tableKey = ready.removeFirst();
-            ordered.add(byTable.get(tableKey));
-            for (String dependent : dependents.getOrDefault(tableKey, List.of())) {
-                int remaining = dependencyCounts.get(dependent) - 1;
-                dependencyCounts.put(dependent, remaining);
-                if (remaining == 0 && enqueued.add(dependent)) {
-                    ready.addLast(dependent);
-                }
-            }
-        }
-
-        if (ordered.size() != mappings.size()) {
-            throw new IllegalArgumentException("Detected circular dependency between collection mappings");
-        }
-        return ordered;
-    }
-
-    private void syncCollection(SyncConfig.CollectionMapping mapping) throws SQLException {
-        System.out.printf(Locale.US, "Syncing collection %s -> table %s%n", mapping.collection, mapping.table);
-        Map<String, Object> bindVars = Map.of("@collection", mapping.collection);
-        try (ArangoCursor<BaseDocument> cursor = arangoDatabase.query(
-                "FOR doc IN @@collection RETURN doc",
-                bindVars,
-                null,
-                BaseDocument.class)) {
-            while (cursor.hasNext()) {
-                BaseDocument document = cursor.next();
-                upsertDocument(mapping, document);
-            }
-            connection.commit();
-        } catch (Exception ex) {
-            connection.rollback();
-            throw new SQLException("Failed to sync collection " + mapping.collection, ex);
         }
     }
 
@@ -213,116 +135,6 @@ public class SyncService implements AutoCloseable {
         } catch (Exception ex) {
             connection.rollback();
             throw new SQLException("Failed to sync merge " + merge.name, ex);
-        }
-    }
-
-    private void upsertDocument(SyncConfig.CollectionMapping mapping, BaseDocument document) throws SQLException {
-        Object keyValue = resolveValue(document, mapping.keyField);
-        if (keyValue == null) {
-            keyValue = document.getKey();
-        }
-        if (keyValue == null) {
-            throw new SQLException("Document in collection " + mapping.collection + " missing key field " + mapping.keyField);
-        }
-
-        Object sqlKeyValue = toSqlValue(mapping.table, mapping.keyColumn, keyValue);
-
-        Map<String, String> mappings = new LinkedHashMap<>(mapping.fieldMappings);
-        List<Map.Entry<String, String>> entries = new ArrayList<>(mappings.entrySet());
-        entries.sort(Comparator.comparing(Map.Entry::getValue));
-
-        List<String> updateColumns = new ArrayList<>();
-        List<Object> updateValues = new ArrayList<>();
-        for (Map.Entry<String, String> entry : entries) {
-            if (entry.getValue().equals(mapping.keyColumn)) {
-                continue;
-            }
-            updateColumns.add(entry.getValue());
-            Object rawValue = resolveValue(document, entry.getKey());
-            updateValues.add(toSqlValue(mapping.table, entry.getValue(), rawValue));
-        }
-
-        if (updateColumns.isEmpty()) {
-            if (!exists(mapping.table, mapping.keyColumn, keyValue)) {
-                insertRecord(mapping, sqlKeyValue, entries, document);
-            }
-            return;
-        }
-
-        StringBuilder sql = new StringBuilder();
-        sql.append("UPDATE ").append(mapping.table).append(" SET ");
-        for (int i = 0; i < updateColumns.size(); i++) {
-            if (i > 0) {
-                sql.append(", ");
-            }
-            sql.append(updateColumns.get(i)).append(" = ?");
-        }
-        sql.append(" WHERE ").append(mapping.keyColumn).append(" = ?");
-
-        try (PreparedStatement update = connection.prepareStatement(sql.toString())) {
-            int index = 1;
-            for (Object value : updateValues) {
-                update.setObject(index++, value);
-            }
-            update.setObject(index, sqlKeyValue);
-            int affected = update.executeUpdate();
-            if (affected == 0) {
-                insertRecord(mapping, sqlKeyValue, entries, document);
-            }
-        }
-    }
-
-    private void insertRecord(SyncConfig.CollectionMapping mapping,
-                              Object sqlKeyValue,
-                              List<Map.Entry<String, String>> entries,
-                              BaseDocument document) throws SQLException {
-        List<String> columns = new ArrayList<>();
-        List<Object> values = new ArrayList<>();
-
-        columns.add(mapping.keyColumn);
-        values.add(sqlKeyValue);
-
-        for (Map.Entry<String, String> entry : entries) {
-            if (entry.getValue().equals(mapping.keyColumn)) {
-                continue;
-            }
-            columns.add(entry.getValue());
-            Object rawValue = resolveValue(document, entry.getKey());
-            values.add(toSqlValue(mapping.table, entry.getValue(), rawValue));
-        }
-
-        StringBuilder sql = new StringBuilder();
-        sql.append("INSERT INTO ").append(mapping.table).append(" (");
-        for (int i = 0; i < columns.size(); i++) {
-            if (i > 0) {
-                sql.append(", ");
-            }
-            sql.append(columns.get(i));
-        }
-        sql.append(") VALUES (");
-        for (int i = 0; i < values.size(); i++) {
-            if (i > 0) {
-                sql.append(", ");
-            }
-            sql.append("?");
-        }
-        sql.append(")");
-
-        try (PreparedStatement insert = connection.prepareStatement(sql.toString())) {
-            for (int i = 0; i < values.size(); i++) {
-                insert.setObject(i + 1, values.get(i));
-            }
-            insert.executeUpdate();
-        }
-    }
-
-    private boolean exists(String table, String keyColumn, Object rawKeyValue) throws SQLException {
-        String sql = "SELECT 1 FROM " + table + " WHERE " + keyColumn + " = ?";
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, toSqlValue(table, keyColumn, rawKeyValue));
-            try (ResultSet rs = statement.executeQuery()) {
-                return rs.next();
-            }
         }
     }
 
@@ -408,11 +220,6 @@ public class SyncService implements AutoCloseable {
     private void ensureCollections(SyncConfig cfg) throws SQLException {
         try {
             Set<String> required = new HashSet<>();
-            for (SyncConfig.CollectionMapping mapping : cfg.collections) {
-                if (mapping.collection != null && !mapping.collection.isBlank()) {
-                    required.add(mapping.collection);
-                }
-            }
             for (SyncConfig.MergeMapping merge : mergeMappings) {
                 if (merge.mainCollection != null && !merge.mainCollection.isBlank()) {
                     required.add(merge.mainCollection);
@@ -434,6 +241,16 @@ public class SyncService implements AutoCloseable {
             }
         } catch (ArangoDBException ex) {
             throw new SQLException("Failed to ensure ArangoDB collections", ex);
+        }
+    }
+
+    private boolean exists(String table, String keyColumn, Object rawKeyValue) throws SQLException {
+        String sql = "SELECT 1 FROM " + table + " WHERE " + keyColumn + " = ? LIMIT 1";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setObject(1, toSqlValue(table, keyColumn, rawKeyValue));
+            try (ResultSet rs = statement.executeQuery()) {
+                return rs.next();
+            }
         }
     }
 

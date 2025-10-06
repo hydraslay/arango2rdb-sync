@@ -5,7 +5,6 @@ import com.arangodb.ArangoDatabase;
 import com.arangodb.entity.BaseDocument;
 import com.example.arango2rdb.config.SyncConfig;
 import com.example.arango2rdb.view.CollectionSnapshot;
-import com.example.arango2rdb.view.MappingView;
 import com.example.arango2rdb.view.MergeView;
 import com.example.arango2rdb.view.TableSnapshot;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -74,8 +73,8 @@ public class VisualizationService {
         List<Map<String, Object>> rows = new ArrayList<>();
         LinkedHashSet<String> columns = new LinkedHashSet<>();
         columns.add("_key");
-        columns.add("_id");
-        columns.add("_rev");
+        // columns.add("_id");
+        // columns.add("_rev");
 
         if (limit > 0) {
             String query = "FOR doc IN @@collection LIMIT @limit RETURN doc";
@@ -89,8 +88,8 @@ public class VisualizationService {
                     BaseDocument doc = cursor.next();
                     Map<String, Object> map = new LinkedHashMap<>();
                     map.put("_key", doc.getKey());
-                    map.put("_id", doc.getId());
-                    map.put("_rev", doc.getRevision());
+                    // map.put("_id", doc.getId());
+                    // map.put("_rev", doc.getRevision());
                     doc.getProperties().forEach((k, v) -> {
                         columns.add(k);
                         map.put(k, simplifyValue(v));
@@ -151,18 +150,8 @@ public class VisualizationService {
         return new TableSnapshot(table, totalCount, limit, rows, columns, PAGE_STEP);
     }
 
-    public List<MappingView> getCollectionMappings() {
-        return syncConfig.collections.stream()
-                .map(mapping -> new MappingView(
-                        mapping.collection,
-                        mapping.table,
-                        mapping.fieldMappings.entrySet().stream()
-                                .map(entry -> new MappingView.FieldMapping(entry.getKey(), entry.getValue()))
-                                .toList()))
-                .toList();
-    }
-
     public List<MergeView> getMergeMappings() {
+
         if (syncConfig.merges == null) {
             return List.of();
         }
