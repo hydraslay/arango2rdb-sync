@@ -1,0 +1,56 @@
+﻿<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Schema & Mapping Viewer</title>
+    <link rel="stylesheet" th:href="@{/css/schema.css}">
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+</head>
+<body>
+<header class="page-header">
+    <h1>Schema & Mapping Viewer</h1>
+    <form class="filter-form" hx-get="/" hx-target="#layout" hx-trigger="submit">
+        <label for="filter">Filter</label>
+        <input id="filter" name="filter" type="text" th:value="${filter}">
+        <button type="submit">Apply</button>
+        <button type="button" hx-get="/" hx-target="#layout">Reset</button>
+    </form>
+</header>
+
+<main id="layout" class="layout">
+    <section class="panel panel-left">
+        <h2>ArangoDB Collections</h2>
+        <div class="stack">
+            <div th:if="${arangoCollections.isEmpty()}" class="empty">No collections found.</div>
+            <div th:unless="${arangoCollections.isEmpty()}">
+                <div th:each="collection : ${arangoCollections}" th:if="${collection != null}"
+                    th:replace="~{fragments/arango-collection :: collectionFragment(col=${collection})}"></div>
+            </div>
+        </div>
+    </section>
+
+    <section class="panel panel-center">
+        <h2>Mapping</h2>
+        <div class="stack mappings">
+            <article class="mapping-card" th:if="${mappings.isEmpty() && merges.isEmpty()}">
+                <div class="empty">No mappings defined in mapping.json.</div>
+            </article>
+            <div th:each="mapping : ${mappings}"
+                 th:replace="~{fragments/mapping :: mapping(mapping=${mapping})}"></div>
+            <div th:each="merge : ${merges}"
+                 th:replace="~{fragments/merge :: merge(merge=${merge})}"></div>
+        </div>
+    </section>
+
+    <section class="panel panel-right">
+        <h2>Relational Tables</h2>
+        <div class="stack">
+            <div th:if="${rdbTables.isEmpty()}" class="empty">No tables found.</div>
+            <div th:each="table : ${rdbTables}"
+                 th:replace="~{fragments/rdb-table :: table(table=${table})}"></div>
+        </div>
+    </section>
+</main>
+
+</body>
+</html>

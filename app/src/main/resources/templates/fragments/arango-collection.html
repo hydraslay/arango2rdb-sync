@@ -1,0 +1,45 @@
+<div th:fragment="collectionFragment (col)">
+    <th:block th:if="${col == null}">
+        <article class="entity-card">
+            <div class="entity-body">
+                <div class="empty">Collection unavailable.</div>
+            </div>
+        </article>
+    </th:block>
+    <th:block th:if="${col != null}">
+        <article class="entity-card" th:id="${col.domId}">
+            <header class="entity-header">
+                <div>
+                    <span class="entity-name" th:text="${col.name}"></span>
+                    <span class="entity-count" th:text="'(' + ${col.totalCount} + ' documents)'"></span>
+                </div>
+            </header>
+            <div class="entity-body" th:if="${!col.columns.isEmpty()}">
+                <table>
+                    <thead>
+                    <tr>
+                        <th th:each="column : ${col.columns}" th:text="${column}"></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="row : ${col.rows}">
+                        <td th:each="column : ${col.columns}"
+                            th:text="${row[column]} ?: ''"></td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="entity-body" th:if="${col.columns.isEmpty()}">
+                <div class="empty">No data available.</div>
+            </div>
+            <footer class="entity-footer">
+                <button class="btn" th:if="${col.hasMore}"
+                        th:attr="hx-get=${'/arango/' + col.encodedName + '?size=' + col.nextSize}, hx-target=${'#' + col.domId}"
+                        hx-swap="outerHTML">Load more</button>
+                <button class="btn" th:if="${col.hasMore}"
+                        th:attr="hx-get=${'/arango/' + col.encodedName + '?size=' + col.totalCount}, hx-target=${'#' + col.domId}"
+                        hx-swap="outerHTML">Load all</button>
+            </footer>
+        </article>
+    </th:block>
+</div>

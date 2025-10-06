@@ -1,0 +1,235 @@
+﻿:root {
+    --bg: #f8f9fb;
+    --panel-bg: #ffffff;
+    --border: #d9dee8;
+    --accent: #2563eb;
+    --text-muted: #5f6b7c;
+    --mapping-bg: #f1f5ff;
+}
+
+body {
+    margin: 0;
+    font-family: "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: #1f2937;
+}
+
+.page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.5rem 2rem;
+    background: var(--panel-bg);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.page-header h1 {
+    margin: 0;
+    font-size: 1.75rem;
+}
+
+.filter-form {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.filter-form input {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+
+.filter-form button {
+    padding: 0.5rem 0.9rem;
+    border: none;
+    border-radius: 6px;
+    background: var(--accent);
+    color: white;
+    cursor: pointer;
+}
+
+.filter-form button[type="button"] {
+    background: #6b7280;
+}
+
+.layout {
+    display: grid;
+    grid-template-columns: 1fr 1.2fr 1fr;
+    gap: 1.5rem;
+    padding: 1.5rem 2rem;
+}
+
+.panel {
+    background: transparent;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.panel h2 {
+    margin: 0 0 0.5rem;
+    font-size: 1.25rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.5rem;
+}
+
+.stack {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.entity-card,
+.mapping-card {
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+}
+
+.entity-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 0.75rem;
+}
+
+.entity-name {
+    font-weight: 600;
+}
+
+.entity-count {
+    color: var(--text-muted);
+    margin-left: 0.5rem;
+}
+
+.entity-body {
+    max-height: 320px;
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+
+.entity-body table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.entity-body th,
+.entity-body td {
+    border-bottom: 1px solid var(--border);
+    padding: 0.4rem 0.6rem;
+    text-align: left;
+}
+
+.entity-body thead {
+    background: var(--mapping-bg);
+    position: sticky;
+    top: 0;
+}
+
+.entity-footer {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+.btn {
+    border: none;
+    padding: 0.45rem 0.9rem;
+    border-radius: 6px;
+    background: var(--accent);
+    color: white;
+    cursor: pointer;
+}
+
+.btn + .btn {
+    background: #4b5563;
+}
+
+.empty {
+    padding: 1rem;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.mapping-card {
+    background: var(--mapping-bg);
+    border-color: #c7d2fe;
+}
+
+.mapping-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.mapping-endpoint {
+    flex: 1;
+    padding: 0.6rem 0.8rem;
+    border-radius: 8px;
+    background: white;
+    border: 1px solid var(--border);
+    font-weight: 600;
+}
+
+.mapping-connector {
+    padding: 0.4rem 0.6rem;
+    border-radius: 8px;
+    background: #e0e7ff;
+    border: 1px solid #c7d2fe;
+    font-weight: 600;
+}
+
+.mapping-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+}
+
+.mapping-table td,
+.mapping-table th {
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid #dbeafe;
+}
+
+.mapping-table .mapping-source {
+    color: #1e3a8a;
+    font-weight: 500;
+    width: 45%;
+}
+
+.mapping-table .mapping-target {
+    color: #115e59;
+    font-weight: 500;
+    width: 45%;
+}
+
+.mapping-table .mapping-arrow {
+    text-align: center;
+    width: 10%;
+}
+
+.merge-card h4 {
+    margin: 0.75rem 0 0.4rem;
+    font-size: 0.95rem;
+    color: #1f2937;
+}
+
+.join-table th {
+    background: #ede9fe;
+}
+
+@media (max-width: 1200px) {
+    .layout {
+        grid-template-columns: 1fr;
+    }
+}

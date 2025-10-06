@@ -86,8 +86,7 @@ The init script refreshes data on container start for deterministic demos.
 - Ensure the destination tables exist (the tool assumes schema already created).
 - For vendors without transactional DDL, adjust the schema SQL accordingly.
 
-## Notes
-
-- The CLI opens a transaction per collection; on failure it rolls back only the affected collection.
-- Arrays or embedded documents are serialised as JSON strings when sent to SQL columns.
-- For other authentication schemes (e.g., ArangoDB JWT, PostgreSQL SSL), extend the configuration classes and mapping file.
+## debug 
+```
+mvn spring-boot:run -Dspring-boot.run.jvmArguments="-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"
+```

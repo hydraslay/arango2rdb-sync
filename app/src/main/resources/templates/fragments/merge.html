@@ -1,0 +1,55 @@
+﻿<div th:fragment="merge (merge)">
+    <th:block th:if="${merge == null}">
+        <article class="entity-card">
+            <div class="entity-body">
+                <div class="empty">merge unavailable.</div>
+            </div>
+        </article>
+    </th:block>
+    <th:block th:if="${merge != null}">
+        <article class="mapping-card merge-card">
+            <header class="mapping-header">
+                <div class="mapping-endpoint left" th:text="${merge.mainCollection}"></div>
+                <div class="mapping-connector">
+                    <span th:text="${merge.name}"></span>
+                </div>
+                <div class="mapping-endpoint right" th:text="${merge.targetTable}"></div>
+            </header>
+            <div class="merge-body">
+                <h4>Fields</h4>
+                <table class="mapping-table" th:if="${!merge.fieldMappings.isEmpty()}">
+                    <tbody>
+                    <tr th:each="field : ${merge.fieldMappings}">
+                        <td class="mapping-source" th:text="${field.source()}"></td>
+                        <td class="mapping-arrow">⟶</td>
+                        <td class="mapping-target" th:text="${field.target()}"></td>
+                    </tr>
+                    </tbody>
+                </table>
+                <div class="empty" th:if="${merge.fieldMappings.isEmpty()}">No field mappings.</div>
+                <h4>Joins</h4>
+                <table class="mapping-table joins" th:if="${!merge.joins.isEmpty()}">
+                    <thead>
+                    <tr>
+                        <th>Alias</th>
+                        <th>Collection</th>
+                        <th>Local field</th>
+                        <th>Foreign field</th>
+                        <th>Required</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="join : ${merge.joins}">
+                        <td th:text="${join.alias()}"></td>
+                        <td th:text="${join.collection()}"></td>
+                        <td th:text="${join.localField()}"></td>
+                        <td th:text="${join.foreignField()}"></td>
+                        <td th:text="${join.required() ? 'Yes' : 'No'}"></td>
+                    </tr>
+                    </tbody>
+                </table>
+                <div class="empty" th:if="${merge.joins.isEmpty()}">No joins defined.</div>
+            </div>
+        </article>
+    </th:block>
+</div>

@@ -1,0 +1,45 @@
+﻿<div th:fragment="table (table)">
+    <th:block th:if="${table == null}">
+        <article class="entity-card">
+            <div class="entity-body">
+                <div class="empty">table unavailable.</div>
+            </div>
+        </article>
+    </th:block>
+    <th:block th:if="${table != null}">
+        <article class="entity-card" th:id="${table.domId}">
+            <header class="entity-header">
+                <div>
+                    <span class="entity-name" th:text="${table.name}"></span>
+                    <span class="entity-count" th:text="'(' + ${table.totalCount} + ' rows)'"></span>
+                </div>
+            </header>
+            <div class="entity-body" th:if="${!table.columns.isEmpty()}">
+                <table>
+                    <thead>
+                    <tr>
+                        <th th:each="column : ${table.columns}" th:text="${column}"></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="row : ${table.rows}">
+                        <td th:each="column : ${table.columns}"
+                            th:text="${row[column]} ?: ''"></td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="entity-body" th:if="${table.columns.isEmpty()}">
+                <div class="empty">No data available.</div>
+            </div>
+            <footer class="entity-footer">
+                <button class="btn" th:if="${table.hasMore}"
+                        th:attr="hx-get=${'/rdb/' + table.encodedName + '?size=' + table.nextSize}, hx-target=${'#' + table.domId}"
+                        hx-swap="outerHTML">Load more</button>
+                <button class="btn" th:if="${table.hasMore}"
+                        th:attr="hx-get=${'/rdb/' + table.encodedName + '?size=' + table.totalCount}, hx-target=${'#' + table.domId}"
+                        hx-swap="outerHTML">Load all</button>
+            </footer>
+        </article>
+    </th:block>
+</div>
