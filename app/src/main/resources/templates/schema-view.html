@@ -9,12 +9,24 @@
 <body>
 <header class="page-header">
     <h1>Schema & Mapping Viewer</h1>
-    <form class="filter-form" hx-get="/" hx-target="#layout" hx-trigger="submit">
+    <form class="filter-form" hx-trigger="submit"
+          th:attr="hx-get=${activeRepositoryId} != null ? '/?repo=' + activeRepositoryId : '/', hx-target='#layout'">
         <label for="filter">Filter</label>
         <input id="filter" name="filter" type="text" th:value="${filter}">
+        <input type="hidden" name="repo" th:if="${activeRepositoryId != null}" th:value="${activeRepositoryId}">
         <button type="submit">Apply</button>
-        <button type="button" hx-get="/" hx-target="#layout">Reset</button>
+        <button type="button"
+                th:attr="hx-get=${activeRepositoryId} != null ? '/?repo=' + activeRepositoryId : '/', hx-target='#layout'">Reset</button>
     </form>
+    <div class="repo-controls">
+        <span th:if="${activeRepository != null}" th:text="'Repository: ' + ${activeRepository.name()}"></span>
+        <span th:if="${activeRepository == null}">Repository: default</span>
+        <form th:action="@{/sync}" method="post" class="repo-sync-form">
+            <input type="hidden" name="repo" th:if="${activeRepositoryId != null}" th:value="${activeRepositoryId}">
+            <button type="submit">Sync</button>
+        </form>
+        <a th:href="@{/repositories}">Manage Repositories</a>
+    </div>
 </header>
 
 <main id="layout" class="layout">
@@ -24,7 +36,7 @@
             <div th:if="${arangoCollections.isEmpty()}" class="empty">No collections found.</div>
             <div th:unless="${arangoCollections.isEmpty()}">
                 <div th:each="collection : ${arangoCollections}">
-                    <div th:replace="~{fragments/arango-collection :: collectionFragment(${collection})}"></div>
+                    <div th:replace="~{fragments/arango-collection :: collectionFragment(col=${collection})}"></div>
                 </div>
             </div>
         </div>
@@ -47,7 +59,7 @@
         <div class="stack">
             <div th:if="${rdbTables.isEmpty()}" class="empty">No tables found.</div>
             <div th:each="table : ${rdbTables}">
-                <div th:replace="~{fragments/rdb-table :: table(${table})}"></div>
+                <div th:replace="~{fragments/rdb-table :: table(table=${table}, repoId=${activeRepositoryId})}"></div>
             </div>
         </div>
     </section>

@@ -1,0 +1,63 @@
+﻿<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Repositories</title>
+    <link rel="stylesheet" th:href="@{/css/schema.css}">
+</head>
+<body class="repositories-page">
+<header class="page-header">
+    <h1>Repositories</h1>
+    <a class="btn" th:href="@{/}">Back to Viewer</a>
+</header>
+
+<div class="alerts">
+    <div class="alert success" th:if="${repositoryStatus}" th:text="${repositoryStatus}"></div>
+    <div class="alert error" th:if="${repositoryError}" th:text="${repositoryError}"></div>
+</div>
+
+<section class="repository-actions">
+    <form th:action="@{/repositories}" method="post" class="create-repo-form">
+        <label for="name">New repository</label>
+        <input id="name" name="name" type="text" placeholder="Repository name" required>
+        <button type="submit">Create</button>
+    </form>
+</section>
+
+<section class="repository-list">
+    <table>
+        <thead>
+        <tr>
+            <th>Name</th>
+            <th>Schema</th>
+            <th>Status</th>
+            <th>Created</th>
+            <th>Actions</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr th:if="${repositories.isEmpty()}">
+            <td colspan="5" class="empty">No repositories defined.</td>
+        </tr>
+        <tr th:each="repo : ${repositories}">
+            <td th:text="${repo.name()}"></td>
+            <td th:text="${repo.schemaName()}"></td>
+            <td th:text="${repo.status()}"></td>
+            <td th:text="${#temporals.format(repo.createdAt(), 'yyyy-MM-dd HH:mm')}"></td>
+            <td class="actions">
+                <a class="btn" th:href="@{'/repositories/' + ${repo.id()} + '/open'}">Open</a>
+                <form th:action="@{'/repositories/' + ${repo.id()} + '/commit'}" method="post" class="inline">
+                    <button type="submit">Commit</button>
+                </form>
+                <form th:action="@{'/repositories/' + ${repo.id()} + '/delete'}" method="post" class="inline"
+                      th:onsubmit="return confirm('Delete repository ' + '${repo.name()}' + '?');">
+                    <button type="submit">Delete</button>
+                </form>
+            </td>
+        </tr>
+        </tbody>
+    </table>
+</section>
+
+</body>
+</html>

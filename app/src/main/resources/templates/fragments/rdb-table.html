@@ -1,4 +1,4 @@
-﻿<div th:fragment="table (table)">
+﻿<div th:fragment="table (table, repoId)">
     <th:block th:if="${table == null}">
         <article class="entity-card">
             <div class="entity-body">
@@ -24,7 +24,7 @@
                     <tbody>
                     <tr th:each="row : ${table.rows}">
                         <td th:each="column : ${table.columns}"
-                            th:text="${row[column]} ?: ''"></td>
+                            th:text="${row.__${column}__} ?: ''"></td>
                     </tr>
                     </tbody>
                 </table>
@@ -34,10 +34,10 @@
             </div>
             <footer class="entity-footer">
                 <button class="btn" th:if="${table.hasMore}"
-                        th:attr="hx-get=${'/rdb/' + table.encodedName + '?size=' + table.nextSize}, hx-target=${'#' + table.domId}"
+                        th:attr="hx-get=${'/rdb/' + table.encodedName + '?size=' + table.nextSize + (repoId != null ? '&repo=' + repoId : '')}, hx-target=${'#' + table.domId}"
                         hx-swap="outerHTML">Load more</button>
                 <button class="btn" th:if="${table.hasMore}"
-                        th:attr="hx-get=${'/rdb/' + table.encodedName + '?size=' + table.totalCount}, hx-target=${'#' + table.domId}"
+                        th:attr="hx-get=${'/rdb/' + table.encodedName + '?size=' + table.totalCount + (repoId != null ? '&repo=' + repoId : '')}, hx-target=${'#' + table.domId}"
                         hx-swap="outerHTML">Load all</button>
             </footer>
         </article>

@@ -48,6 +48,9 @@ public class SyncService implements AutoCloseable {
     private final ObjectMapper jsonMapper = new ObjectMapper();
     private final List<SyncConfig.MergeMapping> mergeMappings;
 
+    private record TargetTable(String schema, String table) { }
+
+
     public SyncService(SyncConfig config) throws SQLException {
         this.config = Objects.requireNonNull(config, "config");
         SyncConfig.ArangoConfig arango = config.arango;
@@ -77,14 +80,62 @@ public class SyncService implements AutoCloseable {
         ensureCollections(config);
     }
 
+    private TargetTable targetTable(String repositorySchema, String table) {
+        if (repositorySchema == null || repositorySchema.isBlank()) {
+            return new TargetTable(null, table);
+        }
+        return new TargetTable(repositorySchema, table);
+    }
+
+    private String displayTable(TargetTable table) {
+        if (table.schema() == null || table.schema().isBlank()) {
+            return table.table();
+        }
+        return table.schema() + "." + table.table();
+    }
+
+    private String renderTable(TargetTable table) {
+        if (table.schema() == null || table.schema().isBlank()) {
+            return quoteIdentifier(table.table());
+        }
+        return quoteIdentifier(table.schema()) + "." + quoteIdentifier(table.table());
+    }
+
+    private String tableCacheKey(TargetTable table) {
+        if (table.schema() == null || table.schema().isBlank()) {
+            return table.table().toLowerCase(Locale.ROOT);
+        }
+        return (table.schema() + "." + table.table()).toLowerCase(Locale.ROOT);
+    }
+
+    private String schemaPattern(TargetTable table) throws SQLException {
+        if (table.schema() == null || table.schema().isBlank()) {
+            String defaultSchema = connection.getSchema();
+            if (defaultSchema == null || defaultSchema.isBlank()) {
+                return null;
+            }
+            return defaultSchema;
+        }
+        return table.schema();
+    }
+
+    private String renderColumn(String column) {
+        return quoteIdentifier(column);
+    }
+
     public void run() throws SQLException {
+        run(null);
+    }
+
+    public void run(String repositorySchema) throws SQLException {
         for (SyncConfig.MergeMapping merge : mergeMappings) {
-            syncMerge(merge);
+            syncMerge(merge, repositorySchema);
         }
     }
 
-    private void syncMerge(SyncConfig.MergeMapping merge) throws SQLException {
-        System.out.printf(Locale.US, "Syncing merge %s -> table %s%n", merge.name, merge.targetTable);
+    private void syncMerge(SyncConfig.MergeMapping merge, String repositorySchema) throws SQLException {
+        TargetTable targetTable = targetTable(repositorySchema, merge.targetTable);
+        System.out.printf(Locale.US, "Syncing merge %s -> table %s%n", merge.name, displayTable(targetTable));
         Map<String, Object> bindVars = Map.of("@collection", merge.mainCollection);
         try (ArangoCursor<BaseDocument> cursor = arangoDatabase.query(
                 "FOR doc IN @@collection RETURN doc",
@@ -129,7 +180,7 @@ public class SyncService implements AutoCloseable {
                     columnValues.put(entry.getValue(), value);
                 }
 
-                upsertRow(merge.targetTable, merge.keyColumn, keyRaw, columnValues);
+                upsertRow(targetTable, merge.keyColumn, keyRaw, columnValues);
             }
             connection.commit();
         } catch (Exception ex) {
@@ -244,8 +295,8 @@ public class SyncService implements AutoCloseable {
         }
     }
 
-    private boolean exists(String table, String keyColumn, Object rawKeyValue) throws SQLException {
-        String sql = "SELECT 1 FROM " + table + " WHERE " + keyColumn + " = ? LIMIT 1";
+    private boolean exists(TargetTable table, String keyColumn, Object rawKeyValue) throws SQLException {
+        String sql = "SELECT 1 FROM " + renderTable(table) + " WHERE " + renderColumn(keyColumn) + " = ? LIMIT 1";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, toSqlValue(table, keyColumn, rawKeyValue));
             try (ResultSet rs = statement.executeQuery()) {
@@ -254,9 +305,9 @@ public class SyncService implements AutoCloseable {
         }
     }
 
-    private void upsertRow(String table, String keyColumn, Object rawKeyValue, Map<String, Object> columnValues) throws SQLException {
+    private void upsertRow(TargetTable table, String keyColumn, Object rawKeyValue, Map<String, Object> columnValues) throws SQLException {
         if (rawKeyValue == null) {
-            throw new SQLException("Null key encountered for table " + table);
+            throw new SQLException("Null key encountered for table " + displayTable(table));
         }
         Object sqlKeyValue = toSqlValue(table, keyColumn, rawKeyValue);
 
@@ -283,14 +334,14 @@ public class SyncService implements AutoCloseable {
         }
 
         StringBuilder sql = new StringBuilder();
-        sql.append("UPDATE ").append(table).append(" SET ");
+        sql.append("UPDATE ").append(renderTable(table)).append(" SET ");
         for (int i = 0; i < updateColumns.size(); i++) {
             if (i > 0) {
                 sql.append(", ");
             }
-            sql.append(updateColumns.get(i)).append(" = ?");
+            sql.append(renderColumn(updateColumns.get(i))).append(" = ?");
         }
-        sql.append(" WHERE ").append(keyColumn).append(" = ?");
+        sql.append(" WHERE ").append(renderColumn(keyColumn)).append(" = ?");
 
         try (PreparedStatement update = connection.prepareStatement(sql.toString())) {
             int index = 1;
@@ -305,7 +356,7 @@ public class SyncService implements AutoCloseable {
         }
     }
 
-    private void insertRow(String table, String keyColumn, Object sqlKeyValue, Map<String, Object> converted) throws SQLException {
+    private void insertRow(TargetTable table, String keyColumn, Object sqlKeyValue, Map<String, Object> converted) throws SQLException {
         LinkedHashMap<String, Object> finalColumns = new LinkedHashMap<>();
         if (converted.containsKey(keyColumn)) {
             finalColumns.put(keyColumn, converted.get(keyColumn));
@@ -319,7 +370,7 @@ public class SyncService implements AutoCloseable {
         }
 
         StringBuilder sql = new StringBuilder();
-        sql.append("INSERT INTO ").append(table).append(" (");
+        sql.append("INSERT INTO ").append(renderTable(table)).append(" (");
         StringBuilder placeholders = new StringBuilder();
         List<Object> values = new ArrayList<>(finalColumns.size());
         int index = 0;
@@ -328,7 +379,7 @@ public class SyncService implements AutoCloseable {
                 sql.append(", ");
                 placeholders.append(", ");
             }
-            sql.append(entry.getKey());
+            sql.append(renderColumn(entry.getKey()));
             placeholders.append("?");
             Object value = entry.getKey().equals(keyColumn) ? sqlKeyValue : entry.getValue();
             values.add(value);
@@ -344,7 +395,7 @@ public class SyncService implements AutoCloseable {
         }
     }
 
-    private Object toSqlValue(String table, String column, Object rawValue) throws SQLException {
+    private Object toSqlValue(TargetTable table, String column, Object rawValue) throws SQLException {
         Object normalized = normalizeValue(rawValue);
         if (normalized == null) {
             return null;
@@ -388,8 +439,8 @@ public class SyncService implements AutoCloseable {
         return value.toString();
     }
 
-    private int resolveColumnType(String table, String column) throws SQLException {
-        String tableKey = normalizeTable(table);
+    private int resolveColumnType(TargetTable table, String column) throws SQLException {
+        String tableKey = tableCacheKey(table);
         Map<String, Integer> types = columnTypeCache.get(tableKey);
         if (types == null) {
             types = loadColumnTypes(table);
@@ -399,14 +450,15 @@ public class SyncService implements AutoCloseable {
         return sqlType != null ? sqlType : Types.OTHER;
     }
 
-    private Map<String, Integer> loadColumnTypes(String table) throws SQLException {
+    private Map<String, Integer> loadColumnTypes(TargetTable table) throws SQLException {
         Map<String, Integer> types = new HashMap<>();
-        String[] tablePatterns = new String[]{table, table.toUpperCase(Locale.ROOT), table.toLowerCase(Locale.ROOT)};
+        String tableName = table.table;
+        String[] tablePatterns = new String[]{tableName, tableName.toUpperCase(Locale.ROOT), tableName.toLowerCase(Locale.ROOT)};
         for (String pattern : tablePatterns) {
             if (!types.isEmpty()) {
                 break;
             }
-            try (ResultSet columns = databaseMetaData.getColumns(connection.getCatalog(), null, pattern, "%")) {
+            try (ResultSet columns = databaseMetaData.getColumns(connection.getCatalog(), schemaPattern(table), pattern, "%")) {
                 while (columns.next()) {
                     String columnName = columns.getString("COLUMN_NAME");
                     int dataType = columns.getInt("DATA_TYPE");
@@ -562,8 +614,8 @@ public class SyncService implements AutoCloseable {
         throw new SQLException("Unsupported value type for TIME column: " + value.getClass().getName());
     }
 
-    private String normalizeTable(String table) {
-        return table.toLowerCase(Locale.ROOT);
+    private String quoteIdentifier(String identifier) {
+        return "\"" + identifier.replace("\"", "\"\"") + "\"";
     }
 
     @Override

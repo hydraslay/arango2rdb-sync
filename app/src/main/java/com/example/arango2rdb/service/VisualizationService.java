@@ -27,7 +27,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 
 @Service
 public class VisualizationService {
@@ -110,24 +109,33 @@ public class VisualizationService {
     }
 
     public List<TableSnapshot> loadTables(String filter) {
-        return readTableNames().stream()
+        return loadTables(filter, null);
+    }
+
+    public List<TableSnapshot> loadTables(String filter, String schema) {
+        return readTableNames(schema).stream()
                 .filter(name -> filter == null || name.toLowerCase(Locale.ROOT).contains(filter.toLowerCase(Locale.ROOT)))
-                .map(name -> loadTable(name, DEFAULT_PAGE_SIZE))
+                .map(name -> loadTable(name, DEFAULT_PAGE_SIZE, schema))
                 .toList();
     }
 
     public TableSnapshot loadTable(String table, int requestedSize) {
-        List<String> availableTables = readTableNames();
+        return loadTable(table, requestedSize, null);
+    }
+
+    public TableSnapshot loadTable(String table, int requestedSize, String schema) {
+        List<String> availableTables = readTableNames(schema);
         if (!availableTables.contains(table)) {
             throw new IllegalArgumentException("Unknown table " + table);
         }
-        long totalCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM " + quoteIdentifier(table), Long.class);
+        String qualifiedTable = qualifyTable(schema, table);
+        long totalCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM " + qualifiedTable, Long.class);
         int limit = normalizeLimit(requestedSize, totalCount);
         List<Map<String, Object>> rows = new ArrayList<>();
         List<String> columns = List.of();
 
         try (Connection connection = getConnection();
-             PreparedStatement statement = connection.prepareStatement("SELECT * FROM " + quoteIdentifier(table) + " LIMIT ?")) {
+             PreparedStatement statement = connection.prepareStatement("SELECT * FROM " + qualifiedTable + " LIMIT ?")) {
             statement.setInt(1, limit);
             try (ResultSet rs = statement.executeQuery()) {
                 columns = resolveColumns(rs);
@@ -144,10 +152,10 @@ public class VisualizationService {
         }
 
         if (columns.isEmpty()) {
-            columns = resolveColumns(table);
+            columns = resolveColumns(table, schema);
         }
 
-        return new TableSnapshot(table, totalCount, limit, rows, columns, PAGE_STEP);
+        return new TableSnapshot(table, schema, totalCount, limit, rows, columns, PAGE_STEP);
     }
 
     public List<MergeView> getMergeMappings() {
@@ -205,11 +213,26 @@ public class VisualizationService {
     }
 
     private List<String> readTableNames() {
+        return readTableNames(null);
+    }
+
+    private List<String> readTableNames(String schema) {
         try (Connection connection = getConnection()) {
             DatabaseMetaData metaData = connection.getMetaData();
-            try (ResultSet tables = metaData.getTables(connection.getCatalog(), null, "%", new String[]{"TABLE"})) {
+            String schemaPattern = schema;
+            if (schemaPattern == null || schemaPattern.isBlank()) {
+                schemaPattern = connection.getSchema();
+            }
+            if (schemaPattern != null && schemaPattern.isBlank()) {
+                schemaPattern = null;
+            }
+            try (ResultSet tables = metaData.getTables(connection.getCatalog(), schemaPattern, "%", new String[]{"TABLE"})) {
                 List<String> result = new ArrayList<>();
                 while (tables.next()) {
+                    String tableSchema = tables.getString("TABLE_SCHEM");
+                    if (schemaPattern != null && tableSchema != null && !tableSchema.equalsIgnoreCase(schemaPattern)) {
+                        continue;
+                    }
                     String name = tables.getString("TABLE_NAME");
                     if (name != null && !name.startsWith("pg_")) {
                         result.add(name);
@@ -232,10 +255,17 @@ public class VisualizationService {
         return columns;
     }
 
-    private List<String> resolveColumns(String table) {
+    private List<String> resolveColumns(String table, String schema) {
         try (Connection connection = getConnection()) {
             DatabaseMetaData metaData = connection.getMetaData();
-            try (ResultSet columns = metaData.getColumns(connection.getCatalog(), null, table, "%")) {
+            String schemaPattern = schema;
+            if (schemaPattern == null || schemaPattern.isBlank()) {
+                schemaPattern = connection.getSchema();
+            }
+            if (schemaPattern != null && schemaPattern.isBlank()) {
+                schemaPattern = null;
+            }
+            try (ResultSet columns = metaData.getColumns(connection.getCatalog(), schemaPattern, table, "%")) {
                 List<String> result = new ArrayList<>();
                 while (columns.next()) {
                     result.add(columns.getString("COLUMN_NAME"));
@@ -245,6 +275,13 @@ public class VisualizationService {
         } catch (SQLException ex) {
             throw new IllegalStateException("Failed to fetch columns for table " + table, ex);
         }
+    }
+
+    private String qualifyTable(String schema, String table) {
+        if (schema == null || schema.isBlank()) {
+            return quoteIdentifier(table);
+        }
+        return quoteIdentifier(schema) + "." + quoteIdentifier(table);
     }
 
     private String quoteIdentifier(String identifier) {

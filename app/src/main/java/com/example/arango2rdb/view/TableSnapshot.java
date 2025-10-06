@@ -8,6 +8,8 @@ public class TableSnapshot {
 
     private final String name;
     private final String encodedName;
+    private final String schema;
+    private final String domId;
     private final long totalCount;
     private final int size;
     private final List<Map<String, Object>> rows;
@@ -20,8 +22,20 @@ public class TableSnapshot {
                          List<Map<String, Object>> rows,
                          List<String> columns,
                          int step) {
+        this(name, null, totalCount, size, rows, columns, step);
+    }
+
+    public TableSnapshot(String name,
+                         String schema,
+                         long totalCount,
+                         int size,
+                         List<Map<String, Object>> rows,
+                         List<String> columns,
+                         int step) {
         this.name = name;
+        this.schema = schema;
         this.encodedName = encode(name);
+        this.domId = computeDomId(schema, name);
         this.totalCount = totalCount;
         this.size = size;
         this.rows = rows;
@@ -35,6 +49,10 @@ public class TableSnapshot {
 
     public String getEncodedName() {
         return encodedName;
+    }
+
+    public String getSchema() {
+        return schema;
     }
 
     public long getTotalCount() {
@@ -66,7 +84,7 @@ public class TableSnapshot {
     }
 
     public String getDomId() {
-        return "rdb-table-" + slugify(name);
+        return domId;
     }
 
     private String encode(String value) {
@@ -75,6 +93,11 @@ public class TableSnapshot {
         } catch (Exception ex) {
             return value;
         }
+    }
+
+    private String computeDomId(String schema, String value) {
+        String base = (schema == null || schema.isBlank()) ? value : schema + "-" + value;
+        return "rdb-table-" + slugify(base);
     }
 
     private String slugify(String value) {
