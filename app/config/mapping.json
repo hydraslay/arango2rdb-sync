@@ -1,0 +1,96 @@
+﻿{
+  "arango": {
+    "host": "localhost",
+    "port": 8529,
+    "user": "root",
+    "password": "openSesame",
+    "database": "project_graph"
+  },
+  "rdb": {
+    "jdbcUrl": "jdbc:postgresql://localhost:5432/project_sync",
+    "user": "postgres",
+    "password": "postgres"
+  },
+  "collections": [
+    {
+      "collection": "projects",
+      "table": "projects",
+      "keyField": "_key",
+      "keyColumn": "project_id",
+      "fieldMappings": {
+        "_key": "project_id",
+        "name": "name",
+        "description": "description",
+        "status": "status",
+        "teamId": "team_id",
+        "startDate": "start_date",
+        "endDate": "end_date"
+      }
+    },
+    {
+      "collection": "teams",
+      "table": "teams",
+      "keyField": "_key",
+      "keyColumn": "team_id",
+      "fieldMappings": {
+        "_key": "team_id",
+        "name": "name",
+        "leadMemberId": "lead_member_id"
+      }
+    },
+    {
+      "collection": "members",
+      "table": "members",
+      "keyField": "_key",
+      "keyColumn": "member_id",
+      "fieldMappings": {
+        "_key": "member_id",
+        "firstName": "first_name",
+        "lastName": "last_name",
+        "email": "email",
+        "role": "role",
+        "teamId": "team_id"
+      }
+    },
+    {
+      "collection": "tasks",
+      "table": "tasks",
+      "keyField": "_key",
+      "keyColumn": "task_id",
+      "fieldMappings": {
+        "_key": "task_id",
+        "projectId": "project_id",
+        "name": "name",
+        "status": "status",
+        "dueDate": "due_date",
+        "assignedTeamId": "assigned_team_id"
+      }
+    },
+    {
+      "collection": "task_assignments",
+      "table": "task_assignments",
+      "keyField": "_key",
+      "keyColumn": "assignment_id",
+      "fieldMappings": {
+        "_key": "assignment_id",
+        "taskId": "task_id",
+        "memberId": "member_id",
+        "hoursPlanned": "hours_planned",
+        "hoursActual": "hours_actual"
+      }
+    },
+    {
+      "collection": "milestones",
+      "table": "milestones",
+      "keyField": "_key",
+      "keyColumn": "milestone_id",
+      "fieldMappings": {
+        "_key": "milestone_id",
+        "projectId": "project_id",
+        "name": "name",
+        "targetDate": "target_date",
+        "status": "status"
+      }
+    }
+  ]
+}
