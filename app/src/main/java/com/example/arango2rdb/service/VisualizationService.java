@@ -73,8 +73,8 @@ public class VisualizationService {
         List<Map<String, Object>> rows = new ArrayList<>();
         LinkedHashSet<String> columns = new LinkedHashSet<>();
         columns.add("_key");
-        // columns.add("_id");
-        // columns.add("_rev");
+        columns.add("_id");
+        columns.add("_rev");
 
         if (limit > 0) {
             String query = "FOR doc IN @@collection LIMIT @limit RETURN doc";
@@ -88,8 +88,8 @@ public class VisualizationService {
                     BaseDocument doc = cursor.next();
                     Map<String, Object> map = new LinkedHashMap<>();
                     map.put("_key", doc.getKey());
-                    // map.put("_id", doc.getId());
-                    // map.put("_rev", doc.getRevision());
+                    map.put("_id", doc.getId());
+                    map.put("_rev", doc.getRevision());
                     doc.getProperties().forEach((k, v) -> {
                         columns.add(k);
                         map.put(k, simplifyValue(v));

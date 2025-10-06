@@ -7,7 +7,7 @@
         </article>
     </th:block>
     <th:block th:if="${col != null}">
-        <article class="entity-card" th:id="${col.domId}">
+        <article class="entity-card" th:attr="id=${col.domId}">
             <header class="entity-header">
                 <div>
                     <span class="entity-name" th:text="${col.name}"></span>
@@ -18,13 +18,16 @@
                 <table>
                     <thead>
                     <tr>
-                        <th th:each="column : ${col.columns}" th:text="${column}"></th>
+                        <th th:each="column : ${col.columns}"
+                            th:if="${column != '_key' and column != '_rev'}"
+                            th:text="${column}"></th>
                     </tr>
                     </thead>
                     <tbody>
                     <tr th:each="row : ${col.rows}">
                         <td th:each="column : ${col.columns}"
-                            th:text="${row[column]} ?: ''"></td>
+                            th:if="${column != '_key' and column != '_rev'}"
+                            th:text="${row.__${column}__} ?: ''"></td>
                     </tr>
                     </tbody>
                 </table>
