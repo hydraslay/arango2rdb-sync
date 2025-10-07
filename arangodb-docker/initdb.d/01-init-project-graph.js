@@ -183,4 +183,17 @@ milestones.save({
   status: 'PLANNED'
 });
 
+const observers = ensureCollection('observers');
+observers.save({
+  _key: 'observers-0001',
+  name: 'Almighty Corp'
+});
+
+database._createEdgeCollection('project_observer_edges');
+const pjObsEdges = ensureCollection('project_observer_edges');
+pjObsEdges.save({
+  _from: 'projects/project-analytics',
+  _to: 'observers/observers-0001'
+});
+
 print('Sample project graph data loaded.');

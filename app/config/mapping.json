@@ -133,6 +133,29 @@
           "required": false
         }
       ]
+    },
+    {
+      "name": "project_observations",
+      "targetTable": "project_observations",
+      "mainCollection": "projects",
+      "keyColumn": "project_id",
+      "keyField": "main._key",
+      "fieldMappings": {
+        "main._key": "project_id",
+        "main.name": "project_name",
+        "obs.name": "observer_name"
+      },
+      "joins": [
+        {
+          "connectedEdges": [{
+            "collection": "project_observer_edges",
+            "direction": "from-to"
+          }],
+          "alias": "obs",
+          "collection": "observers",
+          "required": true
+        }
+      ]
     }
   ]
 }
