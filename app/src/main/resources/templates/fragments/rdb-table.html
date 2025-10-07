@@ -7,12 +7,19 @@
         </article>
     </th:block>
     <th:block th:if="${table != null}">
-        <article class="entity-card" th:id="${table.domId}">
+        <article class="entity-card collapsible-card" th:id="${table.domId}">
             <header class="entity-header">
                 <div>
                     <span class="entity-name" th:text="${table.name}"></span>
                     <span class="entity-count" th:text="'(' + ${table.totalCount} + ' rows)'"></span>
                 </div>
+                <button type="button"
+                        class="card-toggle"
+                        data-card-toggle
+                        aria-expanded="true"
+                        th:attr="aria-label=${'Toggle ' + table.name + ' table'}">
+                    <span class="card-toggle-icon" aria-hidden="true"></span>
+                </button>
             </header>
             <div class="entity-body" th:if="${!table.columns.isEmpty()}">
                 <table>

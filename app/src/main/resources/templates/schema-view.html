@@ -65,5 +65,48 @@
     </section>
 </main>
 
+<script>
+    (function () {
+        function initialiseCard(button) {
+            if (!(button instanceof HTMLElement)) {
+                return;
+            }
+            const card = button.closest(".collapsible-card");
+            if (!card) {
+                return;
+            }
+            const collapsed = card.classList.contains("is-collapsed");
+            button.setAttribute("aria-expanded", collapsed ? "false" : "true");
+        }
+
+        function hydrateCards(scope) {
+            if (!(scope instanceof HTMLElement)) {
+                scope = document.body;
+            }
+            scope.querySelectorAll("[data-card-toggle]").forEach(initialiseCard);
+        }
+
+        document.addEventListener("click", function (event) {
+            const trigger = event.target.closest("[data-card-toggle]");
+            if (!trigger) {
+                return;
+            }
+            event.preventDefault();
+            const card = trigger.closest(".collapsible-card");
+            if (!card) {
+                return;
+            }
+            const nextState = card.classList.toggle("is-collapsed");
+            trigger.setAttribute("aria-expanded", nextState ? "false" : "true");
+        });
+
+        hydrateCards(document.body);
+
+        document.body.addEventListener("htmx:afterSwap", function (event) {
+            hydrateCards(event.target);
+        });
+    })();
+</script>
+
 </body>
 </html>

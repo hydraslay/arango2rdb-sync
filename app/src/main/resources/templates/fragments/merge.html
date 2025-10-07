@@ -7,13 +7,20 @@
         </article>
     </th:block>
     <th:block th:if="${merge != null}">
-        <article class="mapping-card merge-card">
+        <article class="mapping-card merge-card collapsible-card">
             <header class="mapping-header">
                 <div class="mapping-endpoint left" th:text="${merge.mainCollection}"></div>
                 <div class="mapping-connector">
                     <span th:text="${merge.name}"></span>
                 </div>
                 <div class="mapping-endpoint right" th:text="${merge.targetTable}"></div>
+                <button type="button"
+                        class="card-toggle"
+                        data-card-toggle
+                        aria-expanded="true"
+                        th:attr="aria-label=${'Toggle ' + merge.name + ' merge details'}">
+                    <span class="card-toggle-icon" aria-hidden="true"></span>
+                </button>
             </header>
             <div class="merge-body">
                 <h4>Fields</h4>
