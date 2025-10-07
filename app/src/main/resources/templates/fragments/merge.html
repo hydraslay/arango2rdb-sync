@@ -33,8 +33,8 @@
                     <tr>
                         <th>Alias</th>
                         <th>Collection</th>
-                        <th>Local field</th>
-                        <th>Foreign field</th>
+                        <th>Mode</th>
+                        <th>Details</th>
                         <th>Required</th>
                     </tr>
                     </thead>
@@ -42,8 +42,20 @@
                     <tr th:each="join : ${merge.joins}">
                         <td th:text="${join.alias()}"></td>
                         <td th:text="${join.collection()}"></td>
-                        <td th:text="${join.localField()}"></td>
-                        <td th:text="${join.foreignField()}"></td>
+                        <td th:text="${join.hasConnectedEdges() ? 'Edge path' : 'Field link'}"></td>
+                        <td>
+                            <span th:if="${join.hasConnectedEdges()}">
+                                <span th:each="edge, iterStat : ${join.connectedEdges()}">
+                                    <span th:text="${edge.collection() + ' [' + edge.direction() + ']'}"></span>
+                                    <span th:if="${!iterStat.last}"> -&gt; </span>
+                                </span>
+                            </span>
+                            <span th:unless="${join.hasConnectedEdges()}">
+                                <span th:text="${join.localField()}"></span>
+                                <span> -&gt; </span>
+                                <span th:text="${join.foreignField()}"></span>
+                            </span>
+                        </td>
                         <td th:text="${join.required() ? 'Yes' : 'No'}"></td>
                     </tr>
                     </tbody>

@@ -56,3 +56,9 @@ CREATE TABLE IF NOT EXISTS project_overview (
     health_updated_at TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS project_observations(
+    project_id VARCHAR(64) PRIMARY KEY,
+    project_name TEXT NOT NULL,
+    observer_name TEXT
+);
+

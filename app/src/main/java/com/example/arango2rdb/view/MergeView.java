@@ -45,6 +45,26 @@ public class MergeView {
     public record FieldMapping(String source, String target) {
     }
 
-    public record JoinMapping(String alias, String collection, String localField, String foreignField, boolean required) {
+    public record JoinMapping(String alias,
+                              String collection,
+                              String localField,
+                              String foreignField,
+                              boolean required,
+                              List<ConnectedEdge> connectedEdges) {
+
+        public JoinMapping {
+            connectedEdges = connectedEdges == null ? List.of() : List.copyOf(connectedEdges);
+        }
+
+        public boolean hasConnectedEdges() {
+            return !connectedEdges.isEmpty();
+        }
+
+        public record ConnectedEdge(String collection, String direction) {
+            public ConnectedEdge {
+                collection = collection == null ? "" : collection;
+                direction = direction == null ? "" : direction;
+            }
+        }
     }
 }

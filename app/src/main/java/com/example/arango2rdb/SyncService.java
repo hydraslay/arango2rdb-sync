@@ -5,10 +5,12 @@ import com.arangodb.ArangoDB;
 import com.arangodb.ArangoDatabase;
 import com.arangodb.entity.BaseDocument;
 import com.arangodb.entity.CollectionEntity;
+import com.arangodb.entity.CollectionType;
 import com.arangodb.ArangoDBException;
 import com.example.arango2rdb.config.SyncConfig;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.arangodb.model.CollectionCreateOptions;
 
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -36,7 +38,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 public class SyncService implements AutoCloseable {
     private final SyncConfig config;
@@ -149,10 +150,15 @@ public class SyncService implements AutoCloseable {
 
                 boolean skip = false;
                 for (SyncConfig.MergeJoin join : merge.joins) {
-                    Object localValue = resolveAliasPath(context, join.localField);
-                    BaseDocument joinDoc = null;
-                    if (localValue != null) {
-                        joinDoc = fetchJoinDocument(join, localValue);
+                    BaseDocument joinDoc;
+                    if (join.connectedEdges != null && !join.connectedEdges.isEmpty()) {
+                        joinDoc = fetchJoinDocumentViaEdges(context, join);
+                    } else {
+                        Object localValue = resolveAliasPath(context, join.localField);
+                        joinDoc = null;
+                        if (localValue != null) {
+                            joinDoc = fetchJoinDocument(join, localValue);
+                        }
                     }
                     if (joinDoc == null) {
                         if (join.required) {
@@ -255,6 +261,72 @@ public class SyncService implements AutoCloseable {
         return null;
     }
 
+    private BaseDocument fetchJoinDocumentViaEdges(Map<String, BaseDocument> context, SyncConfig.MergeJoin join) throws SQLException {
+        BaseDocument start = context.get("main");
+        if (start == null) {
+            throw new SQLException("Missing main document when resolving connectedEdges for join '" + join.alias + "'");
+        }
+        String currentId = start.getId();
+        if (currentId == null || currentId.isBlank()) {
+            return null;
+        }
+        String nextId = currentId;
+        for (SyncConfig.MergeJoin.ConnectedEdge edge : join.connectedEdges) {
+            nextId = resolveEdgeStep(edge, nextId, join);
+            if (nextId == null || nextId.isBlank()) {
+                return null;
+            }
+        }
+        return fetchDocumentById(join, nextId);
+    }
+
+    private String resolveEdgeStep(SyncConfig.MergeJoin.ConnectedEdge edge, String currentId, SyncConfig.MergeJoin join) throws SQLException {
+        SyncConfig.MergeJoin.EdgeDirection direction = edge.direction != null
+                ? edge.direction
+                : SyncConfig.MergeJoin.EdgeDirection.FROM_TO;
+        String sourceField = direction == SyncConfig.MergeJoin.EdgeDirection.FROM_TO ? "_from" : "_to";
+        String targetField = direction == SyncConfig.MergeJoin.EdgeDirection.FROM_TO ? "_to" : "_from";
+        Map<String, Object> bindVars = Map.of("id", currentId);
+        String query = "FOR edge IN " + edge.collection
+                + " FILTER edge." + sourceField + " == @id LIMIT 1 RETURN edge." + targetField;
+        try (ArangoCursor<String> cursor = arangoDatabase.query(query, bindVars, null, String.class)) {
+            if (cursor.hasNext()) {
+                return cursor.next();
+            }
+        } catch (Exception ex) {
+            throw new SQLException("Failed to follow connectedEdges for join '" + join.alias
+                    + "' using collection " + edge.collection, ex);
+        }
+        return null;
+    }
+
+    private BaseDocument fetchDocumentById(SyncConfig.MergeJoin join, String documentId) throws SQLException {
+        if (documentId == null || documentId.isBlank()) {
+            return null;
+        }
+        String[] parts = documentId.split("/", 2);
+        if (parts.length != 2) {
+            throw new SQLException("Connected edge result '" + documentId + "' is not a valid document handle for join '"
+                    + join.alias + "'");
+        }
+        String collection = parts[0];
+        String key = parts[1];
+        if (join.collection != null && !join.collection.isBlank() && !collection.equals(join.collection)) {
+            throw new SQLException("Connected edge path for join '" + join.alias + "' resolved to collection '" + collection
+                    + "', expected '" + join.collection + "'");
+        }
+        try {
+            return arangoDatabase.collection(collection).getDocument(key, BaseDocument.class);
+        } catch (ArangoDBException ex) {
+            Integer responseCode = ex.getResponseCode();
+            Integer errorCode = ex.getErrorNum();
+            if ((responseCode != null && responseCode == 404) || (errorCode != null && errorCode == 1202)) {
+                return null;
+            }
+            throw new SQLException("Failed to load document '" + documentId + "' for join '" + join.alias + "'", ex);
+        }
+    }
+
     private String buildFieldAccess(String root, String fieldPath) {
         if (fieldPath.startsWith(".")) {
             throw new IllegalArgumentException("Invalid foreign field path: " + fieldPath);
@@ -270,21 +342,38 @@ public class SyncService implements AutoCloseable {
 
     private void ensureCollections(SyncConfig cfg) throws SQLException {
         try {
-            Set<String> required = new HashSet<>();
+            Set<String> requiredDocuments = new HashSet<>();
+            Set<String> requiredEdges = new HashSet<>();
             for (SyncConfig.MergeMapping merge : mergeMappings) {
                 if (merge.mainCollection != null && !merge.mainCollection.isBlank()) {
-                    required.add(merge.mainCollection);
+                    requiredDocuments.add(merge.mainCollection);
                 }
                 for (SyncConfig.MergeJoin join : merge.joins) {
                     if (join.collection != null && !join.collection.isBlank()) {
-                        required.add(join.collection);
+                        requiredDocuments.add(join.collection);
+                    }
+                    if (join.connectedEdges != null) {
+                        for (SyncConfig.MergeJoin.ConnectedEdge edge : join.connectedEdges) {
+                            if (edge.collection != null && !edge.collection.isBlank()) {
+                                requiredEdges.add(edge.collection);
+                            }
+                        }
                     }
                 }
             }
-            Set<String> existing = arangoDatabase.getCollections().stream()
-                    .map(CollectionEntity::getName)
-                    .collect(Collectors.toSet());
-            for (String collection : required) {
+            Set<String> existing = new HashSet<>();
+            for (CollectionEntity entity : arangoDatabase.getCollections()) {
+                existing.add(entity.getName());
+            }
+            for (String collection : requiredEdges) {
+                if (!existing.contains(collection)) {
+                    arangoDatabase.createCollection(
+                            collection,
+                            new CollectionCreateOptions().type(CollectionType.EDGES));
+                    existing.add(collection);
+                }
+            }
+            for (String collection : requiredDocuments) {
                 if (!existing.contains(collection)) {
                     arangoDatabase.createCollection(collection);
                     existing.add(collection);

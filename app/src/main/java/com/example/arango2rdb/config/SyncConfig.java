@@ -1,6 +1,7 @@
 package com.example.arango2rdb.config;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -169,6 +170,7 @@ public class SyncConfig {
         public String localField;
         public String foreignField;
         public boolean required = true;
+        public List<ConnectedEdge> connectedEdges = Collections.emptyList();
 
         void validate(String mergeName, Set<String> existingAliases) {
             if (alias == null || alias.isBlank()) {
@@ -189,21 +191,76 @@ public class SyncConfig {
                 throw new IllegalArgumentException(
                         "Join collection is required for alias '" + alias + "' in merge " + mergeName);
             }
-            if (localField == null || localField.isBlank()) {
-                throw new IllegalArgumentException(
-                        "Join localField is required for alias '" + alias + "' in merge " + mergeName);
+            if (connectedEdges == null) {
+                connectedEdges = Collections.emptyList();
             }
-            if (!FIELD_PATH.matcher(localField).matches()) {
-                throw new IllegalArgumentException(
-                        "Join localField must be alias.property for alias '" + alias + "' in merge " + mergeName);
+            boolean hasConnectedEdges = !connectedEdges.isEmpty();
+            boolean hasLocalField = localField != null && !localField.isBlank();
+            boolean hasForeignField = foreignField != null && !foreignField.isBlank();
+            if (hasConnectedEdges) {
+                if (hasLocalField || hasForeignField) {
+                    throw new IllegalArgumentException(
+                            "Join '" + alias + "' in merge " + mergeName + " cannot mix connectedEdges with local/foreign fields");
+                }
+                List<ConnectedEdge> cleaned = new ArrayList<>(connectedEdges.size());
+                int index = 0;
+                for (ConnectedEdge edge : connectedEdges) {
+                    edge.validate(mergeName, alias, index++);
+                    cleaned.add(edge);
+                }
+                connectedEdges = List.copyOf(cleaned);
+            } else {
+                if (!hasLocalField) {
+                    throw new IllegalArgumentException(
+                            "Join localField is required for alias '" + alias + "' in merge " + mergeName);
+                }
+                if (!FIELD_PATH.matcher(localField).matches()) {
+                    throw new IllegalArgumentException(
+                            "Join localField must be alias.property for alias '" + alias + "' in merge " + mergeName);
+                }
+                if (!hasForeignField) {
+                    throw new IllegalArgumentException(
+                            "Join foreignField is required for alias '" + alias + "' in merge " + mergeName);
+                }
+                if (!IDENTIFIER.matcher(foreignField.replace(".", "_")).matches()) {
+                    throw new IllegalArgumentException(
+                            "Join foreignField contains invalid characters for alias '" + alias + "' in merge " + mergeName);
+                }
             }
-            if (foreignField == null || foreignField.isBlank()) {
-                throw new IllegalArgumentException(
-                        "Join foreignField is required for alias '" + alias + "' in merge " + mergeName);
+        }
+
+        @JsonIgnoreProperties(ignoreUnknown = true)
+        public static class ConnectedEdge {
+            public String collection;
+            public EdgeDirection direction = EdgeDirection.FROM_TO;
+
+            void validate(String mergeName, String alias, int index) {
+                if (collection == null || collection.isBlank()) {
+                    throw new IllegalArgumentException(
+                            "connectedEdges[" + index + "] collection is required for alias '" + alias + "' in merge " + mergeName);
+                }
+                collection = collection.trim();
+                if (direction == null) {
+                    direction = EdgeDirection.FROM_TO;
+                }
             }
-            if (!IDENTIFIER.matcher(foreignField.replace(".", "_")).matches()) {
-                throw new IllegalArgumentException(
-                        "Join foreignField contains invalid characters for alias '" + alias + "' in merge " + mergeName);
+        }
+
+        public enum EdgeDirection {
+            @JsonProperty("from-to")
+            FROM_TO("from-to"),
+            @JsonProperty("to-from")
+            TO_FROM("to-from");
+
+            private final String label;
+
+            EdgeDirection(String label) {
+                this.label = label;
+            }
+
+            @Override
+            public String toString() {
+                return label;
             }
         }
     }

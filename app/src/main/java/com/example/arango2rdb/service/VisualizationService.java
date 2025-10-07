@@ -177,7 +177,16 @@ public class VisualizationService {
                                         join.collection,
                                         join.localField,
                                         join.foreignField,
-                                        join.required))
+                                        join.required,
+                                        (join.connectedEdges == null
+                                                ? List.of()
+                                                : join.connectedEdges.stream()
+                                                .map(edge -> new MergeView.JoinMapping.ConnectedEdge(
+                                                        edge.collection,
+                                                        edge.direction != null
+                                                                ? edge.direction.toString()
+                                                                : SyncConfig.MergeJoin.EdgeDirection.FROM_TO.toString()))
+                                                .toList())))
                                 .toList()))
                 .toList();
     }
